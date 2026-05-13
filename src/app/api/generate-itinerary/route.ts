@@ -1,0 +1,188 @@
+import { NextRequest, NextResponse } from "next/server";
+import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { heuristicItinerary, type GenerateItineraryPrompt, type DraftItinerary } from "@/lib/ai/itinerary-generator";
+
+/**
+ * POST /api/generate-itinerary — genera un itinerario from-scratch con IA.
+ *
+ * Input: GenerateItineraryPrompt (destination, dates, budget, interests, pace).
+ * Output: { ok: true, itinerary: DraftItinerary } o { ok: false, error: string }.
+ *
+ * Flow:
+ *  1. selectProvider() lee header `x-anthropic-key` / `x-gemini-key` del client
+ *     (provista en /settings) o cae a ANTHROPIC_API_KEY env.
+ *  2. callLLM con un prompt estructurado que pide JSON puro.
+ *  3. Parseamos. Si falla el JSON o no hay key → heurística local.
+ *
+ * Filo competitivo: TripIt no genera itinerarios, solo organiza los que ya
+ * recibió por email. Wanderlog tiene una feature similar pero no es nativa de
+ * mobile y no soporta LatAm. Layla hace generación pero es solo destinos
+ * gringos. Acá generamos en español, contemplando LatAm, con currency local.
+ */
+
+const ALLOWED_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
+
+function withCors(res: NextResponse, origin: string | null): NextResponse {
+  const ok =
+    !origin ||
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin.startsWith("http://localhost") ||
+    origin.endsWith(".vercel.app");
+  if (ok && origin) res.headers.set("Access-Control-Allow-Origin", origin);
+  res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-anthropic-key, x-gemini-key"
+  );
+  res.headers.set("Vary", "Origin");
+  return res;
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return withCors(new NextResponse(null, { status: 204 }), req.headers.get("origin"));
+}
+
+function buildPrompt(p: GenerateItineraryPrompt): string {
+  const lang = p.language || "es";
+  const dayCount = (() => {
+    const s = new Date(`${p.startDate}T00:00:00`);
+    const e = new Date(`${p.endDate}T00:00:00`);
+    return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1);
+  })();
+
+  const interestsText = p.interests.length > 0 ? p.interests.join(", ") : "general";
+  const paceText = p.pace === "slow" ? "tranquilo (3-4 actividades/día)"
+                  : p.pace === "fast" ? "intenso (6+ actividades/día)"
+                  : "balanceado (4-5 actividades/día)";
+
+  return `Generá un itinerario de viaje para ${p.destination} de ${dayCount} días (${p.startDate} a ${p.endDate}).
+
+Contexto del viajero:
+- Intereses: ${interestsText}
+- Ritmo: ${paceText}
+- Presupuesto total: ${p.budgetTotal > 0 ? `${p.budgetTotal} ${p.budgetCurrency}` : "sin límite"}
+- Idioma de la respuesta: ${lang}
+${p.notes ? `- Notas extra del viajero: ${p.notes}` : ""}
+
+DEVOLVÉ EXCLUSIVAMENTE UN JSON con este shape exacto, sin texto previo ni comentarios:
+{
+  "destination": "${p.destination}",
+  "start_date": "${p.startDate}",
+  "end_date": "${p.endDate}",
+  "total_days": ${dayCount},
+  "currency": "${p.budgetCurrency}",
+  "total_estimated_cost": <number>,
+  "days": [
+    {
+      "day_number": 1,
+      "date": "${p.startDate}",
+      "city": "<ciudad o zona del día>",
+      "zone": "<barrio sugerido o null>",
+      "accommodation_suggestion": "<sugerencia de hotel/airbnb o null>",
+      "main_transport": "<transporte intra-día sugerido>",
+      "activities": [
+        {
+          "time": "HH:MM",
+          "title": "<título corto>",
+          "description": "<1-2 oraciones>",
+          "kind": "<food|transport|sightseeing|experience|rest>",
+          "estimated_cost": <number en ${p.budgetCurrency}>
+        }
+      ],
+      "total_estimated_cost": <suma del día>,
+      "notes": "<consejos del día o null>"
+    }
+  ],
+  "tips": ["<tip 1>", "<tip 2>", "<tip 3>"],
+  "generated_by": "anthropic"
+}
+
+REGLAS:
+- ${dayCount} días exactos en el array. Day_number 1..${dayCount}.
+- Dates secuenciales desde ${p.startDate}.
+- Cada día: 3-6 actividades.
+- Costos en ${p.budgetCurrency}. Conservadores y realistas.
+- Mencioná comidas (desayuno/almuerzo/cena) y traslados.
+- Si el destino es LatAm, mencioná scams típicos en tips si corresponde.
+- Tips: 3-5, accionables, no genéricos.
+- NO incluyas markdown, NO incluyas explicaciones fuera del JSON.`;
+}
+
+function safeParseItinerary(raw: string, p: GenerateItineraryPrompt): DraftItinerary | null {
+  try {
+    // El modelo a veces envuelve en ```json ... ```. Limpiamos.
+    let txt = raw.trim();
+    const fence = txt.match(/```(?:json)?\s*([\s\S]+?)```/);
+    if (fence) txt = fence[1].trim();
+    // O a veces antepone texto. Buscamos el primer { hasta el último }.
+    const first = txt.indexOf("{");
+    const last = txt.lastIndexOf("}");
+    if (first >= 0 && last > first) txt = txt.slice(first, last + 1);
+    const parsed = JSON.parse(txt) as DraftItinerary;
+    // Validación mínima
+    if (!Array.isArray(parsed.days) || parsed.days.length === 0) return null;
+    if (!parsed.destination) parsed.destination = p.destination;
+    if (!parsed.currency) parsed.currency = p.budgetCurrency;
+    if (typeof parsed.total_days !== "number") parsed.total_days = parsed.days.length;
+    if (!Array.isArray(parsed.tips)) parsed.tips = [];
+    // Default kind si el modelo se olvidó
+    parsed.days.forEach(d => {
+      if (!Array.isArray(d.activities)) d.activities = [];
+      d.activities.forEach(a => {
+        if (!a.kind) a.kind = "experience";
+        if (typeof a.estimated_cost !== "number") a.estimated_cost = 0;
+      });
+      if (typeof d.total_estimated_cost !== "number") {
+        d.total_estimated_cost = d.activities.reduce((acc, a) => acc + (a.estimated_cost || 0), 0);
+      }
+    });
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  let body: GenerateItineraryPrompt;
+  try {
+    body = (await req.json()) as GenerateItineraryPrompt;
+  } catch {
+    return withCors(NextResponse.json({ ok: false, error: "invalid-json" }, { status: 400 }), origin);
+  }
+  if (!body.destination || !body.startDate || !body.endDate) {
+    return withCors(
+      NextResponse.json({ ok: false, error: "destination, startDate, endDate required" }, { status: 400 }),
+      origin
+    );
+  }
+
+  const { provider, key } = selectProvider(req);
+  if (!provider || !key) {
+    // No LLM disponible → fallback heurístico
+    const fallback = heuristicItinerary(body);
+    return withCors(NextResponse.json({ ok: true, itinerary: fallback, fallback: true }), origin);
+  }
+
+  const userPrompt = buildPrompt(body);
+  const raw = await callLLM(provider, key, {
+    system: "Sos un planificador de viajes experto. Devolvés JSON puro, sin markdown ni texto extra.",
+    userMessage: userPrompt,
+    maxTokens: 4096,
+    timeoutMs: 55_000,
+  });
+
+  if (!raw) {
+    const fallback = heuristicItinerary(body);
+    return withCors(NextResponse.json({ ok: true, itinerary: fallback, fallback: true, reason: "llm-failed" }), origin);
+  }
+
+  const itin = safeParseItinerary(raw, body);
+  if (!itin) {
+    const fallback = heuristicItinerary(body);
+    return withCors(NextResponse.json({ ok: true, itinerary: fallback, fallback: true, reason: "parse-failed" }), origin);
+  }
+
+  itin.generated_by = provider;
+  return withCors(NextResponse.json({ ok: true, itinerary: itin }), origin);
+}

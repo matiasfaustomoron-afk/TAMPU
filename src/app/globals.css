@@ -1,0 +1,945 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── TAMPU palette — Hornocal / NOA Argentina ───
+     Inspired by Serranía de Hornocal (Cerro de los 14 Colores, Quebrada de
+     Humahuaca, Jujuy). Las capas estratificadas del cerro: oxblood, brick red,
+     burnt rust, ochre, cream, sage olive, slate purple, forest green.
+     8 hues canónicos que reemplazan el cyan-indigo SaaS.
+
+     Tokens Hornocal canónicos (USAR estos hue numbers):
+       hue 25  → carmín / coral oxidado    (capas inferiores, mineral hierro)
+       hue 35  → terracota / brick rojo    (capa media baja, ladrillo)
+       hue 55  → cobre tostado             (transición rojo-ocre)
+       hue 75  → ocre mostaza              (las "rayas" amarillas)
+       hue 85  → crema lana de llama       (la franja blanca)
+       hue 130 → sage olive / verde puna   (las dos capas verdes oscuras)
+       hue 290 → púrpura pizarra           (capas superiores, mineral cobalto)
+       hue 20  → oxblood / lacre profundo  (sombras de las grietas)
+
+     IMPORTANT: Light is the default. Dark is opt-in.
+     Hospitality-premium identity = light warm bg. */
+
+  /* DARK — "noche en la quebrada": Hornocal a la luz de la luna.
+     Warm leather con un toque púrpura mineral, nunca black puro. */
+  --color-background: oklch(0.20 0.025 30);       /* tierra nocturna con púrpura mineral */
+  --color-foreground: oklch(0.96 0.014 75);       /* llama wool */
+  --color-card: oklch(0.26 0.028 32);             /* clay-stone, flota sobre bg */
+  --color-card-foreground: oklch(0.96 0.014 75);
+  --color-popover: oklch(0.29 0.030 32);
+  --color-popover-foreground: oklch(0.96 0.014 75);
+
+  /* PRIMARY — brick rojo del Hornocal (hue 35, más saturado) */
+  --color-primary: oklch(0.70 0.17 35);
+  --color-primary-foreground: oklch(0.16 0.022 32);
+
+  --color-secondary: oklch(0.31 0.025 32);
+  --color-secondary-foreground: oklch(0.96 0.014 75);
+  --color-muted: oklch(0.31 0.025 32);
+  /* Dark muted-fg subido de 0.74 → 0.78 para cumplir WCAG AA 4.5:1 sobre bg 0.20 */
+  --color-muted-foreground: oklch(0.78 0.022 55);
+  --color-accent: oklch(0.35 0.032 38);
+  --color-accent-foreground: oklch(0.96 0.014 75);
+  --color-destructive: oklch(0.64 0.20 20);       /* oxblood Hornocal */
+  --color-destructive-foreground: oklch(0.98 0 0);
+  --color-success: oklch(0.60 0.10 130);          /* sage olive Hornocal */
+  --color-success-foreground: oklch(0.14 0.022 32);
+  --color-warning: oklch(0.78 0.14 75);           /* ocre mostaza Hornocal */
+  --color-warning-foreground: oklch(0.16 0.022 32);
+  --color-info: oklch(0.58 0.09 290);             /* púrpura pizarra Hornocal */
+  --color-info-foreground: oklch(0.98 0.005 78);
+  --color-border: oklch(0.96 0.014 75 / 0.11);
+  --color-input: oklch(0.96 0.014 75 / 0.13);
+  --color-ring: oklch(0.70 0.17 35);
+
+  /* ─── iOS materials ─── tierra hue + mineral */
+  --material-thin: oklch(0.26 0.028 32 / 0.72);
+  --material-regular: oklch(0.26 0.028 32 / 0.85);
+  --material-thick: oklch(0.26 0.028 32 / 0.95);
+
+  /* ─── Radii — iOS continuous corner feel ─── */
+  --radius: 1.25rem;          /* 20px — iOS card default */
+  --radius-sm: 0.625rem;      /* 10px — chip/pill */
+  --radius-lg: 1.5rem;        /* 24px — sheet */
+  --radius-xl: 2rem;          /* 32px — feature card */
+
+  /* ─── Icon sizing tokens — UNA fuente de verdad para tamaños de icono ───
+     Cinco tamaños canónicos. Mirá `src/components/ui/icon-size.ts` para uso
+     desde TS/lucide. Esta CSS var solo se usa para inline SVG / glyphs custom
+     y para utilities Tailwind tipo `w-[var(--icon-md)]`.
+
+       --icon-xs:  14px → badges, status dots, micro-affordances
+       --icon-sm:  18px → chips inline, list-row sub-icons
+       --icon-md:  22px → tab bar, list rows, default lucide en cards
+       --icon-lg:  24px → FABs, primary CTAs, action buttons
+       --icon-xl:  32px → empty states, hero icons, onboarding */
+  --icon-xs: 14px;
+  --icon-sm: 18px;
+  --icon-md: 22px;
+  --icon-lg: 24px;
+  --icon-xl: 32px;
+
+  /* ─── Shadows — feather soft, iOS depth ─── */
+  --shadow-card: 0 0.5px 1px rgba(0, 0, 0, 0.05), 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.18), 0 16px 56px rgba(0, 0, 0, 0.12);
+  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.30);
+
+  /* ─── Fonts ─── */
+  --font-sans: var(--font-sans), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-serif: var(--font-serif), "Instrument Serif", "New York", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ─── Motion — spring-like ease ─── */
+  --ease-ios: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --animate-fade-in: fade-in 0.45s var(--ease-ios);
+  --animate-slide-up: slide-up 0.4s var(--ease-ios);
+  --animate-pop-in: pop-in 0.35s var(--ease-spring);
+  --animate-shimmer: shimmer 1.8s linear infinite;
+
+  @keyframes fade-in {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-up {
+    0% { opacity: 0; transform: translateY(24px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pop-in {
+    0% { opacity: 0; transform: scale(0.92); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  /* Hint card stagger entry — slide + slight scale, spring ease */
+  @keyframes hint-enter {
+    0%   { opacity: 0; transform: translateY(16px) scale(0.97); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes hint-exit {
+    0%   { opacity: 1; transform: translateY(0) scale(1); max-height: 200px; }
+    100% { opacity: 0; transform: translateY(-8px) scale(0.97); max-height: 0; margin: 0; padding: 0; }
+  }
+  /* Ken Burns — slow pan + zoom para hero photos del welcome */
+  @keyframes ken-burns {
+    0%   { transform: scale(1.05) translate(0, 0); }
+    50%  { transform: scale(1.12) translate(-1.2%, -0.8%); }
+    100% { transform: scale(1.18) translate(0.6%, 0.4%); }
+  }
+  /* Stagger fade — child elements aparecen escalonados */
+  @keyframes fade-stagger {
+    0%   { opacity: 0; transform: translateY(12px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  /* Tipo "magnetic" para botones cinematic — el shadow se expande al hover */
+  @keyframes magnetic-pulse {
+    0%, 100% { box-shadow: 0 8px 24px rgba(199, 91, 47, 0.25), 0 16px 56px rgba(199, 91, 47, 0.12); }
+    50%      { box-shadow: 0 12px 32px rgba(199, 91, 47, 0.35), 0 20px 64px rgba(199, 91, 47, 0.18); }
+  }
+}
+
+/* Hint card animations — usados por <HintCard /> */
+.tampu-hint-enter {
+  animation: hint-enter 0.65s var(--ease-spring) both;
+}
+.tampu-hint-exit {
+  animation: hint-exit 0.28s var(--ease-ios) forwards;
+  overflow: hidden;
+}
+
+/* Ken Burns wrapper para hero photos */
+.ken-burns {
+  animation: ken-burns 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Stagger child animation utility — combinada con animation-delay inline */
+.stagger-child {
+  animation: fade-stagger 0.7s var(--ease-ios) both;
+  will-change: transform, opacity;
+}
+
+/* Stagger grid — auto-stagger por orden DOM. Cada hijo entra con delay
+   incremental. No requiere animation-delay inline.
+   Cap a 14 hijos (delay máx 700ms) — más allá es ruido. */
+.stagger-grid > * {
+  animation: fade-stagger 0.55s var(--ease-ios) both;
+  opacity: 0;
+}
+.stagger-grid > *:nth-child(1)  { animation-delay: 40ms;  }
+.stagger-grid > *:nth-child(2)  { animation-delay: 90ms;  }
+.stagger-grid > *:nth-child(3)  { animation-delay: 140ms; }
+.stagger-grid > *:nth-child(4)  { animation-delay: 190ms; }
+.stagger-grid > *:nth-child(5)  { animation-delay: 240ms; }
+.stagger-grid > *:nth-child(6)  { animation-delay: 290ms; }
+.stagger-grid > *:nth-child(7)  { animation-delay: 340ms; }
+.stagger-grid > *:nth-child(8)  { animation-delay: 390ms; }
+.stagger-grid > *:nth-child(9)  { animation-delay: 440ms; }
+.stagger-grid > *:nth-child(10) { animation-delay: 490ms; }
+.stagger-grid > *:nth-child(11) { animation-delay: 540ms; }
+.stagger-grid > *:nth-child(12) { animation-delay: 580ms; }
+.stagger-grid > *:nth-child(13) { animation-delay: 620ms; }
+.stagger-grid > *:nth-child(n+14) { animation-delay: 660ms; }
+
+/* Magnetic CTA — botón principal del welcome que respira sutil */
+.tampu-magnetic {
+  animation: magnetic-pulse 4.5s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* Glass material — para los chrome elements del welcome */
+.tampu-glass {
+  background: oklch(0.98 0.005 78 / 0.65);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.dark .tampu-glass {
+  background: oklch(0.22 0.012 38 / 0.55);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Welcome cinemático — keyframes y utilities específicos
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Logo pop — escala spring desde 40% */
+@keyframes logo-pop-anim {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.logo-pop {
+  animation: logo-pop-anim 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 100ms;
+}
+
+/* Halo breathing detrás del logo */
+@keyframes halo-breathe-anim {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(1.15); opacity: 0.75; }
+}
+.halo-breathe { animation: halo-breathe-anim 4s ease-in-out infinite; will-change: transform, opacity; }
+
+/* Halo pulse rápido para el sparkle del step 2 */
+@keyframes halo-pulse-fast-anim {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50%      { transform: scale(1.4); opacity: 0.7; }
+}
+.halo-pulse-fast { animation: halo-pulse-fast-anim 1.8s ease-in-out infinite; will-change: transform, opacity; }
+
+/* Glyph drift — los background glyphs flotan suave con desfases distintos */
+@keyframes glyph-drift-1-anim {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-22px) rotate(3deg); }
+}
+@keyframes glyph-drift-2-anim {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50%      { transform: translateY(18px) translateX(-10px); }
+}
+@keyframes glyph-drift-3-anim {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-14px) rotate(-2deg); }
+}
+.glyph-drift-1 { animation: glyph-drift-1-anim 11s ease-in-out infinite; }
+.glyph-drift-2 { animation: glyph-drift-2-anim 14s ease-in-out infinite; }
+.glyph-drift-3 { animation: glyph-drift-3-anim 9s ease-in-out infinite; }
+
+/* Boarding pass card entry — 3D rotate + scale spring */
+@keyframes boarding-card-enter-anim {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.92) perspective(800px) rotateX(-15deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) perspective(800px) rotateX(0);
+  }
+}
+.boarding-card-enter {
+  animation: boarding-card-enter-anim 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  will-change: transform, opacity;
+}
+
+/* Path cards (step 3) — lift on hover */
+.path-card {
+  transition: transform 220ms var(--ease-ios), box-shadow 220ms var(--ease-ios);
+}
+.path-card:hover {
+  transform: translateY(-3px);
+}
+
+/* Glyph spin on hover de su parent button — sutil 8deg */
+.glyph-spin-on-hover {
+  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.path-card:hover .glyph-spin-on-hover {
+  transform: rotate(8deg);
+}
+
+/* Hero parallax — fuerte, premium hospitality style.
+   El hero translateY = -0.5x del scroll → se "ancla" mientras el contenido
+   pasa por encima. Scale +8% cuando scrollean = sensación de zoom-in cinema.
+   Opacity fade gradual hasta 30% (nunca 0, así sigue visible como fondo). */
+.hero-parallax {
+  transform: translateY(calc(var(--parallax-y) * -0.5)) scale(var(--parallax-scale));
+  opacity: var(--parallax-opacity);
+  transform-origin: top center;
+  will-change: transform, opacity;
+  /* Cubic-bezier ease en el opacity fade — antes era linear, ahora es la
+     misma curva iOS del resto de la app (sensación coherente). Transform NO
+     lleva transition: el lock 1:1 al scrollY es lo que da la sensación de
+     "anclado" — agregar transition al transform causa visible lag del dedo. */
+  transition: opacity 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hero title entry — slide-up letras con stagger sutil */
+@keyframes hero-title-enter-anim {
+  0%   { opacity: 0; transform: translateY(18px); letter-spacing: 0.02em; }
+  100% { opacity: 1; transform: translateY(0); letter-spacing: 0; }
+}
+.hero-title-enter {
+  animation: hero-title-enter-anim 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity, letter-spacing;
+}
+
+/* Countdown flip — el número del countdown aparece con pop spring */
+@keyframes countdown-flip-anim {
+  0%   { opacity: 0; transform: scale(0.6); }
+  60%  { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.countdown-flip {
+  display: inline-block;
+  animation: countdown-flip-anim 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 250ms;
+  will-change: transform, opacity;
+}
+
+/* View Transitions API — DESACTIVADO globalmente.
+   Probamos `@view-transition { navigation: auto }` pero en Chrome 131+ con
+   Next.js client-side routing causa lag perceptible y eventualmente rompe
+   transiciones cuando hay imágenes grandes en el DOM destino (welcome → vault
+   = welcome ofrece foto andina full-bleed que tarda en serializarse al
+   snapshot). El crossfade del welcome (entre steps) ya da la sensación premium
+   sin pagar el costo en TODAS las navegaciones.
+
+   Si volvemos a habilitarlo: scope a routes específicas con `view-transition-name`
+   por elemento, NO global. */
+
+/* Pulse dot — para indicadores "live" como SyncIndicator online o
+   "viaje activo". Doble layer: dot sólido + halo que se expande y desvanece. */
+@keyframes pulse-dot-halo {
+  0%   { transform: scale(0.85); opacity: 0.55; }
+  60%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.pulse-dot {
+  position: relative;
+  display: inline-block;
+}
+.pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: pulse-dot-halo 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: 0;
+  will-change: transform, opacity;
+}
+.pulse-dot > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Confetti micro — partículas que salen radialmente y se desvanecen */
+@keyframes tampu-confetti-fly {
+  0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  15%  { opacity: 1; transform: translate(calc(var(--tampu-dx) * 0.18), calc(var(--tampu-dy) * 0.18)) scale(1); }
+  100% { transform: translate(var(--tampu-dx), calc(var(--tampu-dy) + 40px)) scale(0.6) rotate(180deg); opacity: 0; }
+}
+
+/* Toast spring pop — más dramático que animate-pop-in */
+@keyframes tampu-toast-pop {
+  0%   { opacity: 0; transform: translateY(28px) scale(0.86); }
+  60%  { opacity: 1; transform: translateY(-3px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Heart burst — animación cuando das like en journal. Tres particles
+   irradiando + scale pop del corazón principal. */
+@keyframes heart-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.45); }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1.10); }
+}
+.heart-pop {
+  animation: heart-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center center;
+}
+@keyframes heart-burst-particle {
+  0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: var(--burst-target) scale(0.8); opacity: 0; }
+}
+.heart-burst-particle {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: oklch(0.62 0.20 25);
+  pointer-events: none;
+  animation: heart-burst-particle 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Spin para el indicator de pull-to-refresh cuando está refreshing */
+@keyframes tampu-pull-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Today cell pulse — celda del día actual en TripCalendar */
+@keyframes today-cell-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.68 0.16 38 / 0.45); }
+  60%      { box-shadow: 0 0 0 8px oklch(0.68 0.16 38 / 0); }
+}
+.today-cell-pulse {
+  animation: today-cell-pulse 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Tab icon bounce — cuando una tab se vuelve activa, el icono hace bounce
+   tipo SF Symbols .bounce. Reemplaza un sad scale-105. */
+@keyframes tab-icon-bounce-anim {
+  0%   { transform: scale(1);    }
+  35%  { transform: scale(1.22); }
+  70%  { transform: scale(0.94); }
+  100% { transform: scale(1.10); }
+}
+.tab-icon-bounce {
+  animation: tab-icon-bounce-anim 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: 50% 60%;
+}
+
+/* Shadow utility para texto sobre fotos — garantiza contraste WCAG AA
+   incluso si el scrim falla. Aplicar a TODO texto white-on-photo. */
+.text-shadow-strong {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 2px 8px rgba(0, 0, 0, 0.65),
+    0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.text-shadow-soft {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.65),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* ─── Welcome stage — modo Faena editorial.
+   Cream warm de fondo, fotos vibrantes en frames sin darkening, bloques
+   sólidos Hornocal como marcos de texto. Premium hospitality, NO dark.   */
+.tampu-welcome-stage {
+  position: relative;
+  min-height: calc(100vh - 64px);
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Stratigraphy Hornocal bar — tira fina horizontal con las 8 capas del cerro.
+   Usar como divider editorial entre secciones. Altura típica 4-8px. */
+.tampu-stratigraphy-bar {
+  background: linear-gradient(
+    90deg,
+    oklch(0.45 0.08 290) 0%,
+    oklch(0.42 0.08 145) 14%,
+    oklch(0.50 0.09 130) 28%,
+    oklch(0.72 0.15 75) 42%,
+    oklch(0.62 0.16 55) 58%,
+    oklch(0.55 0.18 35) 74%,
+    oklch(0.42 0.18 22) 88%,
+    oklch(0.38 0.18 18) 100%
+  );
+}
+
+/* Hornocal solid color blocks — usar como background de cards editoriales.
+   Cada uno trae su foreground apropiado. */
+.tampu-block-terracota  { background: oklch(0.55 0.18 35);  color: oklch(0.99 0.012 80); }
+.tampu-block-mostaza    { background: oklch(0.72 0.15 75);  color: oklch(0.19 0.030 32); }
+.tampu-block-cardon     { background: oklch(0.50 0.09 130); color: oklch(0.99 0.012 80); }
+.tampu-block-indigo     { background: oklch(0.42 0.08 290); color: oklch(0.99 0.012 80); }
+.tampu-block-carmin     { background: oklch(0.48 0.18 20);  color: oklch(0.99 0.012 80); }
+.tampu-block-canela     { background: oklch(0.60 0.14 25);  color: oklch(0.99 0.012 80); }
+.tampu-block-cream      { background: oklch(0.93 0.020 70); color: oklch(0.19 0.030 32); }
+
+/* Welcome glass cards — para usar sobre foto de fondo (oscura o clara).
+   Frosted glass MUY opaco para garantizar legibilidad incluso sobre fotos
+   claras tipo Salar de Uyuni. */
+.welcome-glass-card {
+  background: rgba(15, 10, 6, 0.62);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Primary path — accent terracota sólido, NO gradient hacia transparente */
+.welcome-glass-primary {
+  border-left: 4px solid oklch(0.68 0.20 38);
+  background: linear-gradient(135deg, rgba(199, 91, 47, 0.55), rgba(15, 10, 6, 0.70));
+}
+
+/* ─── LIGHT — DEFAULT MODE ───
+   Identidad Tampu: lana de llama + barro cocido + cardón.
+   Reglas:
+   - Background NUNCA es blanco puro (#ffffff) — quema. Usar warm bone.
+   - Cards SÍ pueden ser blancos para crear elevación contrasted contra el bg.
+   - Sombras VISIBLES (no apenas perceptibles) — tono tierra, NO slate-blue.
+   - Foreground NUNCA es negro puro — tinta tierra suave para reducir fatiga.
+*/
+:root:not(.dark) {
+  /* Light mode — adobe / lana de llama / cielo del Norte argentino.
+     Hornocal hues, mismos canónicos pero con lightness alto para light mode. */
+  --color-background: oklch(0.965 0.014 80);          /* lana de llama */
+  --color-foreground: oklch(0.19 0.030 32);           /* tinta tierra profunda (más contraste) */
+
+  /* Cards: blanco hueso para flotar sobre la lana */
+  --color-card: oklch(0.99 0.008 80);
+  --color-card-foreground: oklch(0.19 0.030 32);
+  --color-popover: oklch(0.99 0.008 80);
+  --color-popover-foreground: oklch(0.19 0.030 32);
+
+  /* PRIMARY — brick rojo Hornocal (hue 35, oscuro para contraste sobre lana) */
+  --color-primary: oklch(0.50 0.19 35);
+  --color-primary-foreground: oklch(0.99 0 0);
+
+  --color-secondary: oklch(0.93 0.016 72);
+  --color-secondary-foreground: oklch(0.19 0.030 32);
+
+  --color-muted: oklch(0.93 0.016 72);
+  --color-muted-foreground: oklch(0.38 0.035 40);     /* MÁS oscuro = más contraste sobre lana */
+
+  --color-accent: oklch(0.90 0.020 65);
+  --color-accent-foreground: oklch(0.19 0.030 32);
+
+  --color-destructive: oklch(0.50 0.20 20);           /* oxblood Hornocal */
+  --color-destructive-foreground: oklch(0.99 0 0);
+  --color-success: oklch(0.44 0.10 130);              /* sage olive Hornocal */
+  --color-success-foreground: oklch(0.99 0 0);
+  --color-warning: oklch(0.60 0.15 70);               /* mostaza tostada Hornocal */
+  --color-warning-foreground: oklch(0.99 0 0);
+  --color-info: oklch(0.42 0.09 290);                 /* púrpura pizarra Hornocal */
+  --color-info-foreground: oklch(0.99 0 0);
+
+  --color-border: oklch(0.19 0.030 32 / 0.12);
+  --color-input: oklch(0.19 0.030 32 / 0.14);
+  --color-ring: oklch(0.50 0.19 35);
+
+  /* Materials for glass surfaces — semi-opaque warm white */
+  --material-thin: oklch(0.99 0.006 78 / 0.78);
+  --material-regular: oklch(0.99 0.006 78 / 0.88);
+  --material-thick: oklch(0.99 0.006 78 / 0.96);
+
+  /* SHADOWS — warm earth-toned shadows. Same rgb base across all (48,26,13) = barro. */
+  --shadow-card:
+    0 1px 2px rgba(48, 26, 13, 0.04),
+    0 4px 12px rgba(48, 26, 13, 0.05),
+    0 12px 32px rgba(48, 26, 13, 0.04);
+  --shadow-floating:
+    0 4px 12px rgba(48, 26, 13, 0.08),
+    0 16px 40px rgba(48, 26, 13, 0.10),
+    0 32px 80px rgba(48, 26, 13, 0.06);
+  --shadow-sheet:
+    0 -4px 16px rgba(48, 26, 13, 0.06),
+    0 -16px 48px rgba(48, 26, 13, 0.10);
+
+  color-scheme: light;
+}
+
+/* Light mode subtle gradient — gives the bg depth without notebook lines.
+   ALL hues in tierra family (no cool 230 anymore). */
+:root:not(.dark) body {
+  background-image:
+    radial-gradient(ellipse at top, oklch(0.99 0.012 78) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, oklch(0.96 0.018 55 / 0.55) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Light mode card border to delineate from bg (since bg is warm) */
+:root:not(.dark) .ios-card,
+:root:not(.dark) .ios-list,
+:root:not(.dark) .ios-card-feature {
+  border: 1px solid oklch(0.15 0.018 260 / 0.06);
+}
+
+* { border-color: var(--color-border); }
+html { font-family: var(--font-sans); }
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv02", "cv11";
+  letter-spacing: -0.011em;
+}
+
+h1, h2, h3 { letter-spacing: -0.025em; }
+
+/* ─── Tampu type system ───
+   Cuatro niveles. La regla es disciplina: cada nivel tiene UN uso.
+   - display:   countdowns, números heroicos, "44" del countdown.
+   - hero:      el headline serif de cada pantalla (uno por screen).
+   - title:     títulos de sección dentro de una pantalla.
+   - eyebrow:   labels UPPERCASE arriba de los títulos.
+*/
+.tampu-display {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2.5rem, 9vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+.tampu-hero {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(2.25rem, 8vw, 3.25rem);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+.tampu-title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+}
+/* ─── Eyebrow utility — single source of truth ───
+   11px / bold / tracking 0.16em / uppercase / muted-foreground.
+   Antes había 3 variantes en uso: .ios-eyebrow (padding inline + 600 weight + tracking 0.06em),
+   .tampu-eyebrow (sin padding, 700 weight, 0.16em) y SectionHeader con inline
+   text-[10px] tracking-[0.18em] mb-1.5. Drift visible al ojo: el mismo "eyebrow"
+   se renderiza distinto en home vs settings vs cashflow.
+   Ahora todas apuntan a la canónica. Las clases legacy quedan como aliases para back-compat. */
+.eyebrow {
+  font-size: 0.6875rem;       /* 11px */
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  line-height: 1.4;
+}
+.tampu-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  line-height: 1.4;
+}
+
+/* Legacy aliases — back-compat con componentes que importan estas clases por nombre */
+.title-large {
+  font-size: clamp(2.25rem, 8vw, 2.75rem);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.title-large-serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(2.75rem, 10vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Editorial serif utility */
+.font-serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+/* iOS material — frosted glass surface (tab bar, headers) */
+.ios-material {
+  background-color: var(--material-regular);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+}
+.ios-material-thin {
+  background-color: var(--material-thin);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* iOS insetted grouped list — the Things 3 / iOS Settings pattern */
+.ios-list {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.ios-list > * + * {
+  border-top: 1px solid var(--color-border);
+}
+.ios-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  min-height: 52px;
+  transition: background-color 0.15s var(--ease-ios);
+}
+.ios-list-row:active {
+  background-color: var(--color-accent);
+}
+
+/* iOS section eyebrow — alias de .eyebrow con padding contextual para grouped lists.
+   Unificada con .eyebrow / .tampu-eyebrow: mismo size, weight, tracking, transform. */
+.ios-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  line-height: 1.4;
+  padding: 0 1rem 0.5rem;
+}
+
+/* iOS card with subtle gradient — feature blocks */
+.ios-card {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+.ios-card-feature {
+  background: linear-gradient(180deg, var(--color-card), color-mix(in oklab, var(--color-card) 92%, var(--color-foreground) 0%));
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-floating);
+}
+
+/* Pressable — for taps. iOS HIG: scale-down + bump shadow.
+   - Mobile: scale 0.97 + ligera reducción de shadow para "deep press" */
+.pressable {
+  transition: transform 0.18s var(--ease-spring), opacity 0.12s var(--ease-ios), box-shadow 0.18s var(--ease-ios);
+}
+.pressable:active {
+  transform: scale(0.97);
+  opacity: 0.92;
+}
+
+/* Card lift — hover en desktop lifts card 2px + grows shadow.
+   No aplica en touch (hover:none) para no romper iOS feel. */
+@media (hover: hover) {
+  .ios-card.lift-on-hover {
+    transition: transform 0.32s var(--ease-spring), box-shadow 0.32s var(--ease-ios);
+    will-change: transform, box-shadow;
+  }
+  .ios-card.lift-on-hover:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 12px 28px rgba(48, 26, 13, 0.16);
+  }
+}
+
+/* Parallax tilt — para hero cards (max 6°) que respondan a mouse position.
+   Activado vía JS hook `useParallaxTilt`. Solo desktop (hover capable). */
+.parallax-tilt {
+  transition: transform 0.18s var(--ease-ios);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-muted) 0%, color-mix(in oklab, var(--color-muted) 60%, var(--color-foreground) 8%) 50%, var(--color-muted) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* Safe areas */
+.safe-area-top { padding-top: env(safe-area-inset-top); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.h-safe-top { height: env(safe-area-inset-top); }
+.h-safe-bottom { height: env(safe-area-inset-bottom); }
+
+/* Focus ring iOS-style — outline + offset, garantiza contraste sobre cualquier fondo.
+   No usamos box-shadow porque altera el layout (margins de inputs). */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* Inline utility — para chips/pills/badges interactivos que necesitan focus visible
+   pero no aplican el reset global (porque son span con role=button). */
+.focus-ring-inline:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Hide scrollbar on iOS scroll containers */
+.scrollbar-thin { scrollbar-width: thin; }
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* ─── Tampu icon tokens — paleta HORNOCAL (Cerro 14 Colores) ───
+   8 tokens canónicos. Cada uno corresponde a una capa estratigráfica del cerro
+   visible desde el mirador de Humahuaca:
+
+     tampu-icon-terracota → hue 35  · ladrillo / brick rojo (la capa media)
+     tampu-icon-cobre     → hue 55  · cobre tostado / óxido
+     tampu-icon-mostaza   → hue 75  · ocre amarillo (las rayas brillantes)
+     tampu-icon-cardon    → hue 130 · verde sage / oliva puna (las capas verdes)
+     tampu-icon-indigo    → hue 290 · púrpura pizarra (capas superiores, cobalto)
+     tampu-icon-carmin    → hue 20  · oxblood / lacre profundo (grietas)
+     tampu-icon-canela    → hue 25  · coral oxidado / salmón mineral
+     tampu-icon-piedra    → cool slate (sombra base, hue 60 muy desaturado)
+
+   Uso: <span className="tampu-icon tampu-icon-terracota">…</span>
+*/
+.tampu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  flex-shrink: 0;
+}
+:root:not(.dark) .tampu-icon-terracota  { background: oklch(0.55 0.18 35 / 0.14);  color: oklch(0.44 0.18 35);  }
+:root:not(.dark) .tampu-icon-cobre      { background: oklch(0.58 0.16 55 / 0.14);  color: oklch(0.46 0.16 55);  }
+:root:not(.dark) .tampu-icon-mostaza    { background: oklch(0.72 0.15 75 / 0.18);  color: oklch(0.48 0.13 75);  }
+:root:not(.dark) .tampu-icon-cardon     { background: oklch(0.50 0.09 130 / 0.16); color: oklch(0.38 0.08 130); }
+:root:not(.dark) .tampu-icon-indigo     { background: oklch(0.46 0.08 290 / 0.15); color: oklch(0.36 0.07 290); }
+:root:not(.dark) .tampu-icon-carmin     { background: oklch(0.48 0.18 20 / 0.15);  color: oklch(0.38 0.16 20);  }
+:root:not(.dark) .tampu-icon-canela     { background: oklch(0.60 0.14 25 / 0.14);  color: oklch(0.46 0.14 25);  }
+:root:not(.dark) .tampu-icon-piedra     { background: oklch(0.22 0.020 60 / 0.10); color: oklch(0.32 0.020 60); }
+
+.dark .tampu-icon-terracota  { background: oklch(0.70 0.17 35 / 0.20);  color: oklch(0.80 0.15 35);  }
+.dark .tampu-icon-cobre      { background: oklch(0.64 0.16 55 / 0.20);  color: oklch(0.76 0.14 55);  }
+.dark .tampu-icon-mostaza    { background: oklch(0.78 0.14 75 / 0.20);  color: oklch(0.84 0.13 75);  }
+.dark .tampu-icon-cardon     { background: oklch(0.60 0.10 130 / 0.20); color: oklch(0.72 0.10 130); }
+.dark .tampu-icon-indigo     { background: oklch(0.58 0.09 290 / 0.22); color: oklch(0.72 0.09 290); }
+.dark .tampu-icon-carmin     { background: oklch(0.62 0.20 20 / 0.20);  color: oklch(0.76 0.18 20);  }
+.dark .tampu-icon-canela     { background: oklch(0.66 0.15 25 / 0.20);  color: oklch(0.78 0.14 25);  }
+.dark .tampu-icon-piedra     { background: oklch(0.96 0.012 78 / 0.12); color: oklch(0.82 0.020 55); }
+
+/* ─── Tampu gradient tokens — Hornocal stratigraphy pairings ───
+   Cada gradient combina dos capas adyacentes del cerro para evocar la
+   estratificación. Direcciones siempre 135deg (sun-baked diagonal).        */
+.tampu-gradient-warm {
+  /* terracota → ocre mostaza (la franja central del cerro) */
+  background: linear-gradient(135deg, oklch(0.62 0.20 35), oklch(0.72 0.16 65));
+}
+.tampu-gradient-dusk {
+  /* ocre → oxblood (atardecer en la quebrada) */
+  background: linear-gradient(135deg, oklch(0.62 0.16 55), oklch(0.38 0.16 20));
+}
+.tampu-gradient-puna {
+  /* púrpura pizarra → sage olive (capas superiores + verdes) */
+  background: linear-gradient(135deg, oklch(0.45 0.08 290), oklch(0.42 0.08 145));
+}
+.tampu-gradient-cardon {
+  /* sage → forest deep (las dos capas verdes del Hornocal) */
+  background: linear-gradient(135deg, oklch(0.50 0.09 130), oklch(0.36 0.08 145));
+}
+.tampu-gradient-sol {
+  /* mostaza ocre → cobre (la "franja amarilla" del cerro al sol) */
+  background: linear-gradient(135deg, oklch(0.78 0.15 75), oklch(0.58 0.16 55));
+}
+.tampu-gradient-carmin {
+  /* coral oxidado → oxblood (la base mineral del cerro) */
+  background: linear-gradient(135deg, oklch(0.58 0.18 25), oklch(0.38 0.18 18));
+}
+
+/* ─── Hornocal stratigraphic gradient — el SHOWPIECE.
+   Reproduce las 8 capas del Cerro 14 Colores en una sola línea.
+   Para usar en hero panels que quieran "es el Hornocal y nada más". */
+.tampu-gradient-hornocal {
+  background: linear-gradient(
+    175deg,
+    oklch(0.45 0.08 290) 0%,
+    oklch(0.42 0.08 145) 14%,
+    oklch(0.50 0.09 130) 26%,
+    oklch(0.72 0.15 75) 40%,
+    oklch(0.78 0.13 65) 52%,
+    oklch(0.62 0.16 55) 66%,
+    oklch(0.55 0.18 35) 80%,
+    oklch(0.38 0.18 20) 100%
+  );
+}
+
+/* Disclosure chevron — for list rows */
+.chevron-right::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--color-muted-foreground);
+  border-right: 1.5px solid var(--color-muted-foreground);
+  transform: rotate(45deg);
+  opacity: 0.55;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Print */
+@media print {
+  nav, aside, header, button[aria-label="Quick add expense"] { display: none !important; }
+  body { background: white !important; color: black !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── content-visibility utilities — perf trick para listas largas ───
+   Browsers saltan el render (paint+layout) de elementos `cv-auto` que están
+   fuera del viewport, usando `contain-intrinsic-size` como placeholder.
+   Resultado: hasta 7× más rápido el initial render en feeds grandes.
+
+   .cv-auto    — card de día completo en day-swiper (~580px alto)
+   .cv-auto-sm — feed card de journal (~320px alto)
+
+   IMPORTANTE: no apliques a contenido above-the-fold ni al item activo de
+   listas con scroll-snap — necesita estar painted para que el snap funcione. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 580px;
+}
+.cv-auto-sm {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
+}
+
+/* ─── A11y AAA — prefers-reduced-transparency ───
+   Usuarios con vestíbulo sensible o low-vision tienen un OS toggle que
+   pide "menos transparencia". Anulamos TODO backdrop-filter: glass surfaces
+   pasan a fondo card sólido (legibilidad garantizada).
+   Selector cubre las 4 clases con backdrop-filter en este archivo
+   (.tampu-glass, .welcome-glass-card, .ios-material, .ios-material-thin) +
+   cualquier utility Tailwind ad-hoc tipo `backdrop-blur-*` / `backdrop-saturate-*`. */
+@media (prefers-reduced-transparency: reduce) {
+  .tampu-glass,
+  .ios-material,
+  .ios-material-thin,
+  .welcome-glass-card,
+  [class*="backdrop-blur"],
+  [class*="backdrop-saturate"],
+  [class*="backdrop-filter"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-color: var(--color-card) !important;
+  }
+}

@@ -1,0 +1,210 @@
+import { NextRequest, NextResponse } from "next/server";
+import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { heuristicMultiParse, type ParsedBooking } from "@/lib/parsing/email-parser";
+
+/**
+ * Email confirmation parser — v2 multibooking + multilingüe.
+ *
+ * Diferencias vs /api/parse-booking (v1):
+ *  - Devuelve un ARRAY de bookings (un email de Despegar trae vuelo + vuelo + seguro = 3 items)
+ *  - SYSTEM prompt declara explícitamente carriers LatAm + idiomas ES/PT/EN/FR/IT
+ *  - Detecta lenguaje y carrier antes de parsear, lo expone en `meta` para telemetría
+ *  - Fallback heurístico vive en lib/parsing/email-parser (testeable sin LLM)
+ *
+ * Filo 10x: TripIt no parsea LATAM/Aerolineas/Gol/Despegar; no soporta portugués; no maneja
+ * emails con múltiples reservas. Este endpoint cubre los tres.
+ *
+ * Privacidad: el texto se envía a Anthropic vía la key del usuario (header `x-anthropic-key`).
+ * Si no hay key, se cae a heurística local. NUNCA se persiste el email en server.
+ */
+
+const ALLOWED_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
+
+function withCors(res: NextResponse, origin: string | null): NextResponse {
+  const ok =
+    !origin ||
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin.startsWith("http://localhost") ||
+    origin.endsWith(".vercel.app");
+  if (ok && origin) res.headers.set("Access-Control-Allow-Origin", origin);
+  res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-anthropic-key, x-gemini-key"
+  );
+  res.headers.set("Vary", "Origin");
+  return res;
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return withCors(new NextResponse(null, { status: 204 }), req.headers.get("origin"));
+}
+
+interface ParseResult {
+  bookings: ParsedBooking[];
+  source: "claude" | "heuristic" | "mixed";
+  languages_detected: string[];
+  carrier_hint: string | null;
+  warnings: string[];
+}
+
+// ─── System prompt — multilingüe + LatAm-aware ───
+const SYSTEM = `Sos un parser de emails de confirmación de viaje. Recibís texto crudo (puede ser pegado de email, SMS, screenshot OCR, o WhatsApp) y devolvés UN ARRAY DE BOOKINGS en JSON estricto.
+
+REGLAS DURAS:
+- Devolvé { "bookings": [ ... ], "language": "es"|"pt"|"en"|"fr"|"it", "carrier_hint": "LATAM"|"Aerolineas Argentinas"|"Gol"|"Azul"|"Avianca"|"Copa"|"Despegar"|"Decolar"|"Almundo"|"Airbnb"|"Booking"|"Marriott"|"Hilton"|"Other"|null }
+- Un email puede tener VARIOS bookings: ida + vuelta = 2 bookings; vuelo + traslado + hotel = 3 bookings; vuelo + seguro = 2 bookings. Separá cada uno como item del array.
+- Si NO podés extraer al menos un type+provider+algo más, devolvé bookings: [].
+
+Cada booking del array es:
+{
+  "type": "flight" | "accommodation" | "train" | "bus" | "tour" | "insurance" | "connectivity" | "transfer" | "other",
+  "provider": "LATAM Airlines" | "Despegar" | "Airbnb" | etc.,
+  "city_name": "Buenos Aires" | null,
+  "description": "BUE→SCL · 12 ago 2026" | "Hotel Pulitzer Buenos Aires" (UNA LÍNEA con el corazón del booking),
+  "use_date": "YYYY-MM-DD" o null,
+  "use_end_date": "YYYY-MM-DD" o null,
+  "payment_deadline": "YYYY-MM-DD" o null,
+  "original_amount": número (no string),
+  "original_currency": ISO 4217 (USD/EUR/ARS/BRL/CLP/COP/MXN/PEN/UYU/PYG/KRW/PGK/PHP/AED/GBP/JPY/CHF),
+  "status": "pending" | "booked" | "confirmed" | "paid",
+  "locator": "PNR/booking ref" o null,
+  "contact": "email o tel del vendor" o null,
+  "is_cancellable": true | false | null,
+  "cancellation_policy": "texto corto" o null,
+  "notes": "observaciones cortas",
+  "confidence": "high" | "medium" | "low"
+}
+
+CARRIERS LATAM frecuentes:
+- LATAM Airlines (BUE/EZE, SCL, LIM, BOG, GRU, GIG, MAD)
+- Aerolineas Argentinas (AR/ARG)
+- Gol Linhas Aéreas (G3) – emails en pt-BR
+- Azul (AD) – emails en pt-BR
+- Avianca (AV)
+- Copa Airlines (CM)
+- JetSmart, Sky Airline
+- Despegar.com / Decolar.com / Almundo – son OTAs, suelen agrupar varios bookings (vuelo + hotel + seguro) en UN mail. PARSEÁ cada item por separado.
+
+IDIOMAS soportados — detectalo automáticamente:
+- es-AR (voseo: "saliste", "tu vuelo"), es-MX, es-CL, es-CO, es-PE — todos español.
+- pt-BR ("voo", "embarque", "código de reserva"). NUNCA confundir pt-BR con español aunque se parezcan.
+- en, fr, it.
+
+FECHAS:
+- ISO yyyy-mm-dd siempre.
+- Si la fecha llega "15/AGO/2026" o "August 15, 2026" o "15 ago" — convertí.
+- Si solo hay día+mes sin año, asumí el próximo año futuro.
+- Para vuelos, use_date = fecha de salida. use_end_date = null (salvo que sea un trip multi-segmento agrupado, ahí use_end_date = fecha del último segmento).
+- Para hoteles, use_date = check-in. use_end_date = check-out.
+
+CONFIDENCE:
+- high: todos los campos clave extraídos textualmente.
+- medium: tuviste que inferir 1-2.
+- low: inferiste mucho o el texto es ambiguo.
+
+NO DEVUELVAS MARKDOWN. SOLO JSON. SIN code fences.`;
+
+interface LLMResponse {
+  bookings: ParsedBooking[];
+  language: string;
+  carrier_hint: string | null;
+}
+
+async function llmParse(req: NextRequest, text: string): Promise<LLMResponse | null> {
+  const { provider, key } = selectProvider(req);
+  if (!provider || !key) return null;
+
+  const raw = await callLLM(provider, key, {
+    system: SYSTEM,
+    userMessage: text.slice(0, 16_000),
+    maxTokens: 2048,
+    timeoutMs: 30_000,
+  });
+  if (!raw) return null;
+
+  try {
+    const clean = raw
+      .replace(/^```(json)?\s*/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
+    const parsed = JSON.parse(clean) as LLMResponse;
+    // Defensive: garantizar shape
+    if (!Array.isArray(parsed.bookings)) return null;
+    return {
+      bookings: parsed.bookings,
+      language: parsed.language || "unknown",
+      carrier_hint: parsed.carrier_hint || null,
+    };
+  } catch (err) {
+    console.warn("[parse-email-confirmation] LLM JSON parse failed:", err);
+    return null;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+
+  let body: { text?: string };
+  try {
+    body = (await req.json()) as { text?: string };
+  } catch {
+    return withCors(NextResponse.json({ error: "JSON inválido" }, { status: 400 }), origin);
+  }
+
+  if (!body?.text || body.text.length < 20) {
+    return withCors(
+      NextResponse.json({ error: "Texto muy corto (mínimo 20 caracteres)" }, { status: 400 }),
+      origin
+    );
+  }
+
+  if (body.text.length > 30_000) {
+    return withCors(
+      NextResponse.json({ error: "Texto muy largo (máximo 30k caracteres)" }, { status: 413 }),
+      origin
+    );
+  }
+
+  const text = body.text;
+  const { key } = selectProvider(req);
+  const warnings: string[] = [];
+
+  // 1) Intentar LLM
+  let llm: LLMResponse | null = null;
+  if (key) {
+    llm = await llmParse(req, text);
+    if (!llm) warnings.push("LLM falló o devolvió shape inválido; cayó a heurística.");
+  } else {
+    warnings.push("Sin key conectada — usando heurística local (menos preciso).");
+  }
+
+  // 2) Heurística (siempre corre, sirve de doble-validación o fallback)
+  const heuristic = heuristicMultiParse(text);
+
+  // 3) Decidir output: si el LLM devolvió ≥1 booking de high/medium, usamos LLM.
+  //    Si no, fallback heurístico.
+  const result: ParseResult = (() => {
+    if (llm && llm.bookings.length > 0) {
+      const goodEnough = llm.bookings.filter((b) => b.confidence !== "low");
+      if (goodEnough.length > 0) {
+        return {
+          bookings: llm.bookings,
+          source: "claude" as const,
+          languages_detected: [llm.language],
+          carrier_hint: llm.carrier_hint,
+          warnings,
+        };
+      }
+    }
+    return {
+      bookings: heuristic.bookings,
+      source: "heuristic" as const,
+      languages_detected: heuristic.languages,
+      carrier_hint: heuristic.carrier_hint,
+      warnings,
+    };
+  })();
+
+  return withCors(NextResponse.json(result), origin);
+}

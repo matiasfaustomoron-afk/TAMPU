@@ -1,0 +1,136 @@
+# Travel OS — Codemagic CI/CD for iOS builds (no Mac required)
+#
+# Setup once: connect this repo at codemagic.io, add code signing certs there.
+# After that: every push to main produces a TestFlight build. Zero local Mac.
+#
+# Pricing (as of 2026):
+#   Free tier:  500 min/month on Mac M2 instances. One iOS build ~15-20 min.
+#               → ~25-30 free TestFlight builds per month.
+#   Paid:       $0.038/min after the 500 free → $1-2 for an extra build.
+#
+# Required Codemagic settings (set in the UI before first build):
+#   1. App Store Connect API key (Codemagic → Teams → Integrations → App Store Connect)
+#      - Generate API Key in App Store Connect → Users and Access → Keys
+#      - Issuer ID, Key ID, .p8 file → paste into Codemagic
+#   2. Bundle ID:  com.travelos.app  (must match capacitor.config.ts)
+#   3. Provisioning: enable "Automatic code signing" → Codemagic handles certs
+
+workflows:
+  ios-testflight:
+    name: iOS → TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - app_store_credentials  # contains APP_STORE_CONNECT_KEY_IDENTIFIER, ISSUER_ID, PRIVATE_KEY
+      vars:
+        BUNDLE_ID: "com.travelos.app"
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        APP_STORE_APP_ID: "0000000000"  # ← replace after first manual app creation in App Store Connect
+      node: 20
+      xcode: 16.0
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+        - ios/App/Pods
+        - node_modules
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          npm install --no-audit --no-fund
+
+      - name: Generate icons
+        script: |
+          npm run icons
+
+      - name: Build mobile static site
+        script: |
+          npm run build:mobile
+
+      - name: Add iOS platform if missing
+        script: |
+          if [ ! -d "ios" ]; then npm run cap:add:ios; fi
+          npx cap sync ios
+
+      - name: Copy iOS icons into Assets.xcassets
+        script: |
+          ICONSET="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p "$ICONSET"
+          cp public/icons/ios/*.png "$ICONSET/"
+          # Codemagic provides Contents.json templates; otherwise minimal one:
+          if [ ! -f "$ICONSET/Contents.json" ]; then
+            cat > "$ICONSET/Contents.json" <<'JSON'
+            { "images": [
+              {"idiom":"iphone","size":"20x20","scale":"2x","filename":"Icon-40.png"},
+              {"idiom":"iphone","size":"20x20","scale":"3x","filename":"Icon-60.png"},
+              {"idiom":"iphone","size":"29x29","scale":"2x","filename":"Icon-58.png"},
+              {"idiom":"iphone","size":"29x29","scale":"3x","filename":"Icon-87.png"},
+              {"idiom":"iphone","size":"40x40","scale":"2x","filename":"Icon-80.png"},
+              {"idiom":"iphone","size":"40x40","scale":"3x","filename":"Icon-120.png"},
+              {"idiom":"iphone","size":"60x60","scale":"2x","filename":"Icon-120.png"},
+              {"idiom":"iphone","size":"60x60","scale":"3x","filename":"Icon-180.png"},
+              {"idiom":"ipad","size":"20x20","scale":"1x","filename":"Icon-20.png"},
+              {"idiom":"ipad","size":"20x20","scale":"2x","filename":"Icon-40.png"},
+              {"idiom":"ipad","size":"29x29","scale":"1x","filename":"Icon-29.png"},
+              {"idiom":"ipad","size":"29x29","scale":"2x","filename":"Icon-58.png"},
+              {"idiom":"ipad","size":"40x40","scale":"1x","filename":"Icon-40.png"},
+              {"idiom":"ipad","size":"40x40","scale":"2x","filename":"Icon-80.png"},
+              {"idiom":"ipad","size":"76x76","scale":"2x","filename":"Icon-152.png"},
+              {"idiom":"ipad","size":"83.5x83.5","scale":"2x","filename":"Icon-167.png"},
+              {"idiom":"ios-marketing","size":"1024x1024","scale":"1x","filename":"Icon-1024.png"}
+            ], "info":{"version":1,"author":"travelos"} }
+          JSON
+          fi
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App && pod install --repo-update && cd ../..
+
+      - name: Auto-bump build number from App Store
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-app-store-build-number "$APP_STORE_APP_ID" || echo 0) + 1))
+          cd ios/App && agvtool new-version -all $BUILD_NUMBER && cd ../..
+
+      - name: Apply Info.plist usage descriptions
+        script: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Travel OS uses the camera so you can scan passports, receipts and boarding passes into your Vault.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Travel OS accesses your photo library so you can attach existing scans of documents.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Travel OS saves the trip summary PDF to your photo library.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Travel OS records your trip route locally on the device when you opt in (Settings → Tracking).'" "$PLIST" 2>/dev/null || true
+
+      - name: Set up code signing (managed by Codemagic)
+        script: |
+          xcode-project use-profiles
+
+      - name: Build .ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-flags="-destination 'generic/platform=iOS'"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM.zip
+    publishing:
+      app_store_connect:
+        auth: integration                  # uses the API key configured in Codemagic UI
+        submit_to_testflight: true
+        beta_groups:
+          - Internal QA
+        # submit_to_app_store: false       # set true only when ready to push for review
+      email:
+        recipients:
+          - you@example.com                # ← replace
+        notify:
+          success: true
+          failure: true

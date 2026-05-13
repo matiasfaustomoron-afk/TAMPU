@@ -1,0 +1,126 @@
+# Travel OS — GitHub Actions iOS build (runs on macos-latest, no local Mac)
+#
+# GitHub Actions pricing (as of 2026):
+#   Free tier:  2,000 minutes/month for public repos. Private repos: 2,000 min
+#               BUT macOS minutes count as 10× → effectively 200 min/month free.
+#               One iOS build ~15-20 min → ~10 builds/month free private.
+#               Public repos: macOS is free unlimited.
+#
+# Required secrets (Settings → Secrets and variables → Actions):
+#   APPLE_ID                      → Apple ID email
+#   APPLE_TEAM_ID                 → Apple Developer Team ID
+#   APP_STORE_CONNECT_KEY_ID      → API Key ID
+#   APP_STORE_CONNECT_ISSUER_ID   → API Key Issuer ID
+#   APP_STORE_CONNECT_API_KEY     → contents of .p8 file (entire file)
+#   MATCH_PASSWORD                → password for fastlane match git encryption
+#   MATCH_REPO_URL                → private repo URL where match stores certs
+#   MATCH_REPO_TOKEN              → PAT with read access to that repo
+
+name: iOS → TestFlight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # allows manual run from the Actions tab
+
+jobs:
+  build:
+    name: Build & upload to TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install npm dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Build mobile static site (Next.js → ./out)
+        run: npm run build:mobile
+
+      - name: Add iOS platform if missing
+        run: |
+          if [ ! -d "ios" ]; then npx cap add ios; fi
+          npx cap sync ios
+
+      - name: Copy iOS icons into AppIcon.appiconset
+        run: |
+          ICONSET="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p "$ICONSET"
+          cp public/icons/ios/*.png "$ICONSET/" || true
+
+      - name: Patch Info.plist with usage descriptions
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Travel OS uses the camera to scan passports, receipts and boarding passes into your Vault.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Travel OS accesses your photo library to attach existing scans of documents.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Travel OS saves the trip summary PDF to your photo library.'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Travel OS records your trip route on-device only when you opt in.'" "$PLIST" 2>/dev/null || true
+
+      - name: CocoaPods install
+        run: cd ios/App && pod install --repo-update
+
+      - name: Install Fastlane
+        run: |
+          gem install bundler
+          if [ ! -f "Gemfile" ]; then
+            cat > Gemfile <<'GEM'
+          source "https://rubygems.org"
+          gem "fastlane"
+          GEM
+          fi
+          bundle install
+
+      - name: Decode App Store Connect API key
+        run: |
+          mkdir -p ~/private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+
+      - name: Build & upload via Fastlane
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_REPO_TOKEN }}
+        run: |
+          cd ios/App
+          # Inline Fastfile — keeps the workflow self-contained
+          mkdir -p fastlane && cat > fastlane/Fastfile <<'FAST'
+          default_platform(:ios)
+          platform :ios do
+            lane :beta do
+              api_key = app_store_connect_api_key(
+                key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+                issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+                key_filepath: "#{ENV['HOME']}/private_keys/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_KEY_ID']}.p8",
+              )
+              match(type: "appstore", readonly: true, app_identifier: "com.travelos.app")
+              increment_build_number(xcodeproj: "App.xcodeproj")
+              build_app(workspace: "App.xcworkspace", scheme: "App", export_method: "app-store")
+              upload_to_testflight(api_key: api_key, skip_waiting_for_build_processing: true)
+            end
+          end
+          FAST
+          bundle exec fastlane beta
+
+      - name: Upload .ipa as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: travel-os-ipa
+          path: ios/App/build/*.ipa

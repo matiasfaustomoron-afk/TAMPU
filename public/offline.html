@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>Travel OS — Offline</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: #0a0a0f; color: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+    .card { max-width: 28rem; width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 1rem; padding: 2rem; }
+    .badge { display: inline-block; padding: 0.25rem 0.75rem; background: rgba(245,158,11,0.1); color: #fbbf24; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+    p { color: #a3a3a3; font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; }
+    .links { display: grid; gap: 0.5rem; }
+    a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: 0.5rem; color: #10b981; text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: background 0.2s; }
+    a:hover { background: rgba(16,185,129,0.15); }
+    a::after { content: "→"; margin-left: auto; opacity: 0.6; }
+    .note { margin-top: 1.5rem; font-size: 0.75rem; color: #737373; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">Sin conexión</span>
+    <h1>Estás offline</h1>
+    <p>No se pudo conectar con el servidor, pero Travel OS guarda lo crítico en tu dispositivo. Las páginas con datos cacheados siguen funcionando.</p>
+    <div class="links">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/today">Hoy</a>
+      <a href="/emergency">Emergencia</a>
+      <a href="/documents">Documentos offline</a>
+    </div>
+    <p class="note">Reintentá cuando tengas red.</p>
+  </div>
+</body>
+</html>
