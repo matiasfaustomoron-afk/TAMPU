@@ -167,7 +167,7 @@ export default function ReservationsPage() {
                           "reservation"
                         }
                         hint={
-                          r.type === "flight" ? "Adjuntar boarding pass" :
+                          r.type === "flight" ? "Adjuntar pase de embarque" :
                           r.type === "accommodation" ? "Adjuntar confirmación de hotel" :
                           r.type === "insurance" ? "Adjuntar póliza" :
                           "Adjuntar PDF / imagen"

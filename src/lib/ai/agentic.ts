@@ -508,7 +508,7 @@ function extractSuggestions(
       // No tenemos el output cacheado acá — la UI puede inferirlo del texto.
       // En MVP devolvemos el deep link genérico.
       out.push({
-        title: "Abrí los archivos del Vault",
+        title: "Abrí tus Documentos",
         detail: "Resultados encontrados en tu cartera",
         priority: "high",
         deep_link: "/vault",

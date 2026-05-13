@@ -19,7 +19,9 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "lighthouse": "node scripts/lighthouse.mjs",
-    "analyze": "ANALYZE=1 next build"
+    "analyze": "ANALYZE=1 next build",
+    "audit:secrets": "node scripts/audit-secrets.cjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -93,6 +95,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "happy-dom": "^20.9.0",
+    "husky": "^9.1.7",
     "lighthouse": "^13.3.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",

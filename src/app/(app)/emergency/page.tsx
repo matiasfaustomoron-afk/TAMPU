@@ -192,7 +192,7 @@ export default function EmergencyPage() {
 
       {/* Offline doc status */}
       {(documents || []).filter(d => d.criticality === "blocker" || d.criticality === "essential").length > 0 && (
-        <IOSSection eyebrow="Documentos offline" footer="Si te quedás sin internet, estos deberían estar guardados en tu Vault.">
+        <IOSSection eyebrow="Documentos offline" footer="Si te quedás sin internet, estos deberían estar guardados en tus Documentos.">
           {(documents || [])
             .filter(d => d.criticality === "blocker" || d.criticality === "essential")
             .map(d => (

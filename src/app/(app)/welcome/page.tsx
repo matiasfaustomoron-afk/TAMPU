@@ -137,7 +137,7 @@ function StepOne({ onNext }: { onNext: () => void }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// STEP 2 — El aha: email → boarding pass
+// STEP 2 — El aha: email → pase de embarque
 // ──────────────────────────────────────────────────────────────────────────
 
 function StepTwo({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
@@ -176,18 +176,21 @@ function StepTwo({ onBack, onNext }: { onBack: () => void; onNext: () => void })
         </span>
       </div>
 
-      {/* Boarding pass — el ÚNICO bloque oscuro de la pantalla. Foco visual. */}
+      {/* Pase de embarque — el ÚNICO bloque oscuro de la pantalla. Foco visual.
+          Decisión auditor mayo 2026: el eyebrow visible al user dice "Pase de
+          embarque" (español argentino premium), no "Boarding pass". El comment
+          de código sí queda como "boarding pass" porque ahí es term técnico. */}
       <article className="mt-6 relative tampu-block-indigo rounded-2xl p-6 overflow-hidden shadow-[var(--shadow-floating)]">
         <span aria-hidden className="absolute top-4 right-4 opacity-70">
           <Plane className="w-5 h-5" />
         </span>
-        <p className="text-[10px] font-bold tracking-[0.28em] uppercase opacity-75 mb-2">Boarding pass</p>
+        <p className="text-[10px] font-bold tracking-[0.28em] uppercase opacity-75 mb-2">Pase de embarque</p>
         <h3 className="font-serif text-3xl leading-tight">LATAM LA8064</h3>
         <p className="text-[15px] opacity-90 mt-1">Buenos Aires → Santiago</p>
 
         <div className="mt-5 pt-4 border-t border-white/15 grid grid-cols-3 gap-3 text-[11px]">
           <div>
-            <p className="opacity-70 uppercase tracking-wider">Locator</p>
+            <p className="opacity-70 uppercase tracking-wider">Localizador</p>
             <p className="font-mono mt-0.5">QWERTY</p>
           </div>
           <div>

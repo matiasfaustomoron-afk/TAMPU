@@ -3,35 +3,205 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a0f" />
-  <title>Travel OS — Offline</title>
+  <meta name="theme-color" content="#f5efe0" />
+  <title>Tampu — sin conexión</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <style>
-    :root { color-scheme: dark; }
+    /* Paleta Tampu — Hornocal earth tones. Hardcodeamos los OKLCH del light
+       theme porque offline.html no tiene acceso al CSS bundle de la app. */
+    :root {
+      color-scheme: light;
+      --bg: #f5efe0;          /* lana de llama */
+      --card: #faf6ec;
+      --ink: #2a2118;         /* cuero cálido */
+      --muted: #786354;
+      --accent: #c75b2f;      /* terracota */
+      --accent-soft: rgba(199, 91, 47, 0.08);
+      --warning: #c89a3a;     /* ocre mostaza */
+      --border: rgba(42, 33, 24, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #2a2118;
+        --card: #34281d;
+        --ink: #f5efe0;
+        --muted: #b8a690;
+        --accent: #e88a5d;
+        --accent-soft: rgba(232, 138, 93, 0.12);
+        --warning: #e0b465;
+        --border: rgba(245, 239, 224, 0.08);
+      }
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: #0a0a0f; color: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
-    .card { max-width: 28rem; width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 1rem; padding: 2rem; }
-    .badge { display: inline-block; padding: 0.25rem 0.75rem; background: rgba(245,158,11,0.1); color: #fbbf24; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
-    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
-    p { color: #a3a3a3; font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      padding-top: env(safe-area-inset-top, 1.5rem);
+      padding-bottom: env(safe-area-inset-bottom, 1.5rem);
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      max-width: 28rem;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 2rem 1.75rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.04);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      background: rgba(200, 154, 58, 0.14);
+      color: var(--warning);
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
+    }
+    .badge::before {
+      content: "";
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--warning);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50%      { opacity: 1; }
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.6rem;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+      margin-bottom: 1.5rem;
+    }
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 1.25rem 0 0.6rem;
+    }
     .links { display: grid; gap: 0.5rem; }
-    a { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: 0.5rem; color: #10b981; text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: background 0.2s; }
-    a:hover { background: rgba(16,185,129,0.15); }
-    a::after { content: "→"; margin-left: auto; opacity: 0.6; }
-    .note { margin-top: 1.5rem; font-size: 0.75rem; color: #737373; text-align: center; }
+    a.tile {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 600;
+      transition: background 0.2s, transform 0.1s;
+    }
+    a.tile:hover { background: rgba(199, 91, 47, 0.14); }
+    a.tile:active { transform: scale(0.985); }
+    a.tile .icon { font-size: 1.1rem; }
+    a.tile::after { content: "→"; margin-left: auto; color: var(--accent); font-weight: 700; }
+    .vault-hero {
+      background: linear-gradient(135deg, var(--accent-soft), rgba(200, 154, 58, 0.08));
+      border-color: rgba(199, 91, 47, 0.25);
+    }
+    .vault-hero::after { color: var(--accent); }
+    .note {
+      margin-top: 1.5rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    button.retry {
+      margin-top: 0.75rem;
+      width: 100%;
+      padding: 0.65rem;
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 0.65rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button.retry:hover { background: var(--accent-soft); }
   </style>
 </head>
 <body>
   <div class="card">
     <span class="badge">Sin conexión</span>
-    <h1>Estás offline</h1>
-    <p>No se pudo conectar con el servidor, pero Travel OS guarda lo crítico en tu dispositivo. Las páginas con datos cacheados siguen funcionando.</p>
+    <h1>Tu viaje sigue acá</h1>
+    <p class="lead">
+      Tampu guarda lo crítico en tu teléfono — tus documentos, itinerario y notas no necesitan red.
+      Cuando vuelva la conexión, sincronizamos lo nuevo automáticamente.
+    </p>
+
+    <div class="section-label">Disponible offline</div>
     <div class="links">
-      <a href="/dashboard">Dashboard</a>
-      <a href="/today">Hoy</a>
-      <a href="/emergency">Emergencia</a>
-      <a href="/documents">Documentos offline</a>
+      <a href="/vault" class="tile vault-hero">
+        <span class="icon">📁</span>
+        <span>Documentos del viaje</span>
+      </a>
+      <a href="/today" class="tile">
+        <span class="icon">☀️</span>
+        <span>Hoy</span>
+      </a>
+      <a href="/itinerary" class="tile">
+        <span class="icon">✈️</span>
+        <span>Itinerario</span>
+      </a>
+      <a href="/expenses" class="tile">
+        <span class="icon">💰</span>
+        <span>Gastos</span>
+      </a>
+      <a href="/journal" class="tile">
+        <span class="icon">📷</span>
+        <span>Fotos del diario</span>
+      </a>
+      <a href="/emergency" class="tile">
+        <span class="icon">🆘</span>
+        <span>Emergencia</span>
+      </a>
     </div>
-    <p class="note">Reintentá cuando tengas red.</p>
+
+    <button class="retry" onclick="location.reload()">Reintentar conexión</button>
+
+    <p class="note">
+      Pasaportes, boarding passes y seguros se guardan cifrados en tu dispositivo.<br/>
+      Funcionan sin internet, sin cuenta, sin servidor.
+    </p>
   </div>
+
+  <script>
+    // Si la conexión vuelve mientras el usuario está en offline.html, recargamos
+    // automáticamente para que vea la app real (no la fallback page).
+    window.addEventListener("online", () => {
+      // Pequeño delay para evitar reload loops si el browser reporta online
+      // antes de tener conectividad real (false positive de iOS Safari).
+      setTimeout(() => location.reload(), 800);
+    });
+  </script>
 </body>
 </html>

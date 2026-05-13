@@ -230,7 +230,7 @@ export const TRAVELER_QUESTIONS = [
   "¿Dónde cambio dinero?",
   "¿Cómo llego del aeropuerto al centro?",
   "¿Qué lounge puedo usar?",
-  "¿Dame mi próximo boarding pass?",
+  "¿Dame mi próximo pase de embarque?",
   "¿Cuáles son mis docs críticos sin copia offline?",
   "¿Qué pago me vence en los próximos 7 días?",
 ] as const;

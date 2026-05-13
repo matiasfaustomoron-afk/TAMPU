@@ -83,7 +83,7 @@ export function BoardingPassesWidget() {
       >
         <div className="flex items-center gap-2">
           <Plane className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider">Boarding passes</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider">Pases de embarque</h2>
           <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">
             {total} archivo{total !== 1 ? "s" : ""}
           </span>
@@ -100,7 +100,7 @@ export function BoardingPassesWidget() {
           {orphanBoardings.length > 0 && (
             <div className="pt-2 border-t">
               <p className="text-[10px] uppercase text-muted-foreground mb-1.5 flex items-center gap-1">
-                <Paperclip className="w-3 h-3" /> Boarding passes sin vincular a reserva
+                <Paperclip className="w-3 h-3" /> Pases sin vincular a reserva
               </p>
               <ul className="space-y-1">
                 {orphanBoardings.map(a => (

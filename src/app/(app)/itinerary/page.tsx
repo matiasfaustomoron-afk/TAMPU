@@ -259,7 +259,7 @@ export default function ItineraryPage() {
             formatDate={formatDate}
             formatCurrency={formatCurrency}
             attachCategory="boarding_pass"
-            attachHint="Adjuntar boarding pass"
+            attachHint="Adjuntar pase de embarque"
             addLabel="+ Agregar vuelo"
             descPlaceholder="Ej. Emirates GRU→DXB"
             onChanged={refetchReservations}

@@ -19,8 +19,12 @@ import { resetStore } from "@/lib/demo/demo-store";
 import { MAP_TILES, getStoredMapStyle, setStoredMapStyle, type MapStyle } from "@/lib/config/map-tiles";
 import { isTrackingEnabled, setTrackingEnabled } from "@/lib/native/platform";
 import { areTaskRemindersEnabled, setTaskRemindersEnabled } from "@/lib/task-reminders";
-import { getUserApiKey, setUserApiKey, detectProvider } from "@/lib/ai/user-key";
-import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText } from "lucide-react";
+import { getUserApiKey, setUserApiKey, detectProvider, hasLegacyPlainApiKey, hasEncryptedApiKey, migrateLegacyApiKey } from "@/lib/ai/user-key";
+import { fetchProxyUsage } from "@/lib/ai/proxy";
+import { hasPasscode, isUnlocked, lock as lockApp, onLockChange } from "@/lib/crypto/passcode";
+import { countLegacyPlainVaultBlobs, migrateLegacyVaultToEncrypted } from "@/lib/vault/storage";
+import Link from "next/link";
+import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown } from "lucide-react";
 import { useRef } from "react";
 import { downloadBackup, importBackup } from "@/lib/backup";
 import { getBriefConfig, setBriefConfig, type DailyBriefConfig } from "@/lib/daily-brief";
@@ -77,6 +81,89 @@ export default function SettingsPage() {
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const [brief, setBrief] = useState<DailyBriefConfig>(() => getBriefConfig());
   const saveBrief = (next: DailyBriefConfig) => { setBrief(next); setBriefConfig(next); };
+
+  // ─── AI mode selector (proxy / byok / pro) ──────────────────────────
+  // El modo "efectivo" deriva de qué config hay:
+  //   - hay key BYOK válida → "byok"
+  //   - no hay key + proxy habilitado server-side → "proxy" (default)
+  //   - no hay nada + proxy deshabilitado → "proxy" (con CTA de configurar)
+  // "pro" es un tab visual ("Coming soon") hasta que Stripe esté integrado.
+  type AiMode = "proxy" | "byok" | "pro";
+  const initialMode: AiMode = (() => {
+    const k = typeof window !== "undefined" ? getUserApiKey() : null;
+    if (k && (k.startsWith("sk-ant-") || k.startsWith("AIza"))) return "byok";
+    return "proxy";
+  })();
+  const [aiMode, setAiMode] = useState<AiMode>(initialMode);
+  const [proxyUsage, setProxyUsage] = useState<{
+    enabled: boolean;
+    monthly: { used: number; cap: number };
+    daily: { used: number; cap: number };
+    tier: "anonymous" | "auth" | "byok" | "pro";
+  } | null>(null);
+  useEffect(() => {
+    void fetchProxyUsage().then(u => setProxyUsage(u));
+  }, [aiMode, keyJustSaved]); // refetch al cambiar de modo o guardar key
+
+  // ─── Security at-rest (audit 05/2026) ───────────────────────────────────
+  // Estado: ¿hay passcode? ¿está unlocked? ¿hay datos plain pendientes?
+  // El UI cambia según combinación. Re-evaluamos al cambiar el lock state.
+  const [secStatus, setSecStatus] = useState<{
+    passcodeSet: boolean;
+    unlocked: boolean;
+    plainApiKey: boolean;
+    encryptedApiKey: boolean;
+    plainVaultBlobs: number;
+  }>({ passcodeSet: false, unlocked: false, plainApiKey: false, encryptedApiKey: false, plainVaultBlobs: 0 });
+  const [migrating, setMigrating] = useState(false);
+
+  const refreshSec = async () => {
+    const passcodeSet = await hasPasscode();
+    setSecStatus({
+      passcodeSet,
+      unlocked: isUnlocked(),
+      plainApiKey: hasLegacyPlainApiKey(),
+      encryptedApiKey: hasEncryptedApiKey(),
+      plainVaultBlobs: await countLegacyPlainVaultBlobs().catch(() => 0),
+    });
+  };
+
+  useEffect(() => {
+    void refreshSec();
+    const off = onLockChange(() => void refreshSec());
+    return off;
+  }, []);
+
+  const handleMigrate = async () => {
+    if (!secStatus.unlocked) {
+      toast("Desbloqueá la app primero (passcode)", "info");
+      return;
+    }
+    setMigrating(true);
+    try {
+      const lines: string[] = [];
+      if (secStatus.plainApiKey) {
+        const r = await migrateLegacyApiKey();
+        if (r.migrated) lines.push("API key cifrada");
+        else if (r.reason) lines.push(`API key: ${r.reason}`);
+      }
+      if (secStatus.plainVaultBlobs > 0) {
+        const r = await migrateLegacyVaultToEncrypted();
+        lines.push(`Vault: ${r.migrated} cifrados, ${r.skipped} ya estaban, ${r.failed} fallaron`);
+      }
+      toast(lines.join(" · ") || "Nada para migrar", "success");
+      await refreshSec();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const handleLockNow = () => {
+    lockApp();
+    toast("App bloqueada", "info");
+  };
 
   // ─── Telemetría (opt-in remoto + dashboard local) ────────────────────
   const [consent, setConsent] = useState<TelemetryConsent>("unknown");
@@ -150,71 +237,292 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* AI key — supports Anthropic Claude OR Google Gemini (auto-detected) */}
-      <Card className={apiKey && keyValid ? "border-l-4 border-l-success" : "border-l-4 border-l-primary"}>
+      {/* ─── Security at-rest (audit 05/2026) ─── */}
+      <Card className={
+        secStatus.passcodeSet
+          ? (secStatus.unlocked ? "border-l-4 border-l-success" : "border-l-4 border-l-warning")
+          : "border-l-4 border-l-destructive"
+      }>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4" />API key de IA</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            {secStatus.passcodeSet
+              ? (secStatus.unlocked ? <ShieldCheck className="w-4 h-4 text-success" /> : <Lock className="w-4 h-4 text-warning" />)
+              : <ShieldAlert className="w-4 h-4 text-destructive" />}
+            Seguridad · cifrado at-rest
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Necesaria para Asistente, clasificación de boarding passes, info de aeropuertos y parser de bookings.
-            La key se guarda <strong>solo en este dispositivo</strong> (localStorage). Tampu nunca la persiste en servidor.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            <strong>Opción A — Google Gemini (GRATIS):</strong> ir a <code className="bg-muted px-1 py-0.5 rounded">aistudio.google.com/apikey</code>{" "}
-            → Create API key. Empieza con <code>AIza</code>. <strong>Free tier generoso, sin costo.</strong>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            <strong>Opción B — Anthropic Claude (pago por uso):</strong> ir a <code className="bg-muted px-1 py-0.5 rounded">console.anthropic.com</code>{" "}
-            → Settings → API Keys. Empieza con <code>sk-ant-</code>. Costo ~USD 0.003 por consulta.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Pegá cualquiera de las dos — auto-detectamos el provider.
-          </p>
-
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={e => setApiKeyState(e.target.value)}
-                placeholder="sk-ant-..."
-                className="font-mono text-xs pr-10"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(s => !s)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label={showKey ? "Ocultar key" : "Mostrar key"}
+          {!secStatus.passcodeSet ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Tu API key y tus Documentos hoy se guardan <strong>en texto plano</strong> en este
+                dispositivo. Si alguien accede al storage del navegador o de la app, los puede leer.
+                Configurá un <strong>passcode</strong> para cifrarlos con AES-GCM(256) — solo lo conocés
+                vos, no se sincroniza, no hay recovery.
+              </p>
+              <Link
+                href={`/passcode?next=${encodeURIComponent("/settings")}`}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
               >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <Button onClick={handleSaveKey} disabled={!apiKey || (apiKey === getUserApiKey() && !keyJustSaved)} className="gap-1">
-              {keyJustSaved ? <><Check className="w-4 h-4" />Guardado</> : "Guardar"}
-            </Button>
+                <Lock className="w-4 h-4" />Configurar passcode
+              </Link>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-xs">
+                {secStatus.unlocked ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-success" />
+                    <span><strong>Desbloqueado</strong> · auto-lock por inactividad (15 min)</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-warning" />
+                    <span><strong>Bloqueado</strong> · ingresá el passcode para acceder a la API key y los Documentos</span>
+                  </>
+                )}
+              </div>
+
+              {(secStatus.plainApiKey || secStatus.plainVaultBlobs > 0) && (
+                <div className="rounded-md bg-warning/10 border border-warning/30 p-3 text-xs space-y-2">
+                  <p className="font-medium flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" />Migración pendiente
+                  </p>
+                  <ul className="ml-4 list-disc space-y-0.5 text-muted-foreground">
+                    {secStatus.plainApiKey && <li>API key todavía en texto plano</li>}
+                    {secStatus.plainVaultBlobs > 0 && <li>{secStatus.plainVaultBlobs} documentos sin cifrar</li>}
+                  </ul>
+                  <Button
+                    onClick={handleMigrate}
+                    disabled={migrating || !secStatus.unlocked}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 mt-1"
+                  >
+                    {migrating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                    Cifrar ahora
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/passcode?next=${encodeURIComponent("/settings")}`}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-accent transition-colors"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />Gestionar passcode
+                </Link>
+                {secStatus.unlocked && (
+                  <Button onClick={handleLockNow} variant="outline" size="sm" className="gap-1">
+                    <Lock className="w-3.5 h-3.5" />Bloquear ahora
+                  </Button>
+                )}
+              </div>
+
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                PBKDF2-SHA256 · 600.000 iteraciones · AES-GCM(256). La master key vive solo en RAM.
+                Lo que NO se cifra: IDs (UUIDs), mime type, tamaño y fecha de los archivos
+                (metadata, no contenido). Esto permite listar el Vault sin pedir passcode.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── IA: 3 modos (proxy default / BYOK / Pro) ─── */}
+      {/* Ver src/lib/ai/PROXY-DESIGN.md para la decisión arquitectónica. */}
+      <Card id="ai" className="border-l-4 border-l-primary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4" />Asistente IA</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* ─── Tabs / Radios ─── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              onClick={() => setAiMode("proxy")}
+              className={`p-3 rounded-lg text-left border-2 transition-all ${
+                aiMode === "proxy" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <Zap className="w-3.5 h-3.5 text-primary" />
+                <p className="text-sm font-medium">Modo proxy</p>
+                <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/15 text-primary ml-auto">Default</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">50 llamadas/mes gratis cortesía de Tampu. Sin config.</p>
+            </button>
+            <button
+              onClick={() => setAiMode("byok")}
+              className={`p-3 rounded-lg text-left border-2 transition-all ${
+                aiMode === "byok" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <Key className="w-3.5 h-3.5" />
+                <p className="text-sm font-medium">BYOK</p>
+                <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground ml-auto">Power user</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Tu key Anthropic o Gemini. Sin límite, datos no pasan por Tampu.</p>
+            </button>
+            <button
+              onClick={() => setAiMode("pro")}
+              className={`p-3 rounded-lg text-left border-2 transition-all ${
+                aiMode === "pro" ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <Crown className="w-3.5 h-3.5 text-warning" />
+                <p className="text-sm font-medium">Tampu Pro</p>
+                <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground ml-auto">Soon</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">USD 4.99/mes · IA ilimitada, sin manejar keys.</p>
+            </button>
           </div>
 
-          {apiKey && !keyValid && (
-            <p className="text-[11px] text-destructive">
-              Key no reconocida. Debe empezar con <code>sk-ant-</code> (Anthropic) o <code>AIza</code> (Google Gemini).
-            </p>
-          )}
-          {apiKey && keyValid && (
-            <p className="text-[11px] text-success">
-              ✓ Key configurada. Provider: <strong>{provider === "anthropic" ? "Anthropic Claude" : "Google Gemini"}</strong>
-            </p>
-          )}
-          {!apiKey && (
-            <p className="text-[11px] text-primary">
-              Sin key, el Asistente responde con datos locales nada más. Gemini es <strong>gratis</strong>.
-            </p>
+          {/* ─── Panel del modo elegido ─── */}
+          {aiMode === "proxy" && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <strong>Default recomendado.</strong> Tampu te incluye <strong>50 llamadas IA por mes</strong> sin
+                que tengas que configurar nada. Funciona para clasificar gastos, parsear bookings, sugerir
+                tips de aeropuerto y consultas al Asistente.
+              </p>
+
+              {/* Usage meter */}
+              {proxyUsage?.enabled && proxyUsage.monthly.cap > 0 && (
+                <div className="rounded-md bg-muted/40 p-3 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Uso del mes</span>
+                    <span className="font-mono tabular-nums">
+                      <strong>{proxyUsage.monthly.used}</strong> / {proxyUsage.monthly.cap}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full bg-border rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${
+                        proxyUsage.monthly.used / proxyUsage.monthly.cap > 0.8 ? "bg-warning" : "bg-primary"
+                      }`}
+                      style={{ width: `${Math.min(100, (proxyUsage.monthly.used / proxyUsage.monthly.cap) * 100)}%` }}
+                    />
+                  </div>
+                  {proxyUsage.monthly.used >= proxyUsage.monthly.cap && (
+                    <p className="text-[11px] text-warning">
+                      Ya usaste tu cuota del mes. Sumá una key gratis de Gemini (tab BYOK) para seguir sin límite.
+                    </p>
+                  )}
+                </div>
+              )}
+              {proxyUsage && !proxyUsage.enabled && (
+                <p className="text-[11px] text-warning">
+                  El proxy IA no está configurado en este deploy. Usá BYOK por ahora.
+                </p>
+              )}
+
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                <strong>Privacy</strong>: en modo proxy mandamos solo el prompt mínimo de cada feature
+                (ej. la descripción del gasto que clasificás). NUNCA mandamos tu vault entero, fotos, ni
+                el trip completo. Si te preocupa, usá BYOK — los datos van directo a Anthropic/Gemini sin
+                tocar nuestra infra.
+              </p>
+            </div>
           )}
 
-          <Button variant="outline" size="sm" onClick={() => { setApiKeyState(""); setUserApiKey(null); }} className="mt-2">
-            Eliminar key
-          </Button>
+          {aiMode === "byok" && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <p className="text-xs text-muted-foreground">
+                Traé tu propia API key — Tampu no le ve el contenido a tus requests, y no tenés límite.
+                La key se guarda <strong>solo en este dispositivo</strong> (cifrada si tenés passcode).
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>Opción A — Google Gemini (GRATIS):</strong>{" "}
+                <code className="bg-muted px-1 py-0.5 rounded">aistudio.google.com/apikey</code>{" "}
+                → Create API key. Empieza con <code>AIza</code>. Free tier generoso.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>Opción B — Anthropic Claude (pago por uso):</strong>{" "}
+                <code className="bg-muted px-1 py-0.5 rounded">console.anthropic.com</code>{" "}
+                → Settings → API Keys. Empieza con <code>sk-ant-</code>. ~USD 0.003 por consulta.
+              </p>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={e => setApiKeyState(e.target.value)}
+                    placeholder="AIza... o sk-ant-..."
+                    className="font-mono text-xs pr-10"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(s => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label={showKey ? "Ocultar key" : "Mostrar key"}
+                  >
+                    {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <Button onClick={handleSaveKey} disabled={!apiKey || (apiKey === getUserApiKey() && !keyJustSaved)} className="gap-1">
+                  {keyJustSaved ? <><Check className="w-4 h-4" />Guardado</> : "Guardar"}
+                </Button>
+              </div>
+
+              {apiKey && !keyValid && (
+                <p className="text-[11px] text-destructive">
+                  Key no reconocida. Debe empezar con <code>sk-ant-</code> (Anthropic) o <code>AIza</code> (Google Gemini).
+                </p>
+              )}
+              {apiKey && keyValid && (
+                <p className="text-[11px] text-success">
+                  ✓ Key configurada · provider: <strong>{provider === "anthropic" ? "Anthropic Claude" : "Google Gemini"}</strong>
+                </p>
+              )}
+
+              {apiKey && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setApiKeyState(""); setUserApiKey(null); setAiMode("proxy"); }}
+                  className="gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />Eliminar key (vuelve a modo proxy)
+                </Button>
+              )}
+            </div>
+          )}
+
+          {aiMode === "pro" && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="rounded-md bg-warning/10 border border-warning/30 p-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Crown className="w-4 h-4 text-warning" />
+                  Tampu Pro · próximamente
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  IA ilimitada (clasificar, parsear, asistente, itinerarios) sin que vos manejes keys
+                  ni te quedes sin cuota. Billing centralizado, una factura.
+                </p>
+                <p className="text-xs">
+                  <strong>USD 4.99/mes</strong> · cancelás cuando quieras.
+                </p>
+                <Button
+                  disabled
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 cursor-not-allowed opacity-70"
+                  title="Stripe pending — sprint siguiente"
+                >
+                  <Crown className="w-3.5 h-3.5" />Coming soon
+                </Button>
+                {/* TODO Stripe: reemplazar el botón disabled por <Link href="/checkout/pro"> */}
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Mientras tanto: el modo proxy te alcanza para uso casual (50 calls/mes), y BYOK con Gemini
+                gratis te alcanza para uso intenso. Pro es para quien no quiere ni pensar en esto.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -384,7 +692,7 @@ export default function SettingsPage() {
             />
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            El backup incluye: trips, reservas, gastos, vault (PDFs en base64), API key,
+            El backup incluye: viajes, reservas, gastos, documentos (PDFs en base64), API key,
             preferencias, vistas fijadas, cache de tips. NO incluye datos de Supabase si usás
             modo online (esos viven server-side).
           </p>
@@ -423,7 +731,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Si lo activás, el asistente sabe tu aeropuerto más cercano y prioriza el boarding pass correcto.
+            Si lo activás, el asistente sabe tu aeropuerto más cercano y prioriza el pase de embarque correcto.
             Los puntos se guardan SOLO en este dispositivo. Cero envío a servidor.
           </p>
           <label className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 cursor-pointer">

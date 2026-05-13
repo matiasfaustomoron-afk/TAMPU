@@ -48,7 +48,7 @@ export const HINTS: Record<string, HintDef> = {
     id: "vault-empty",
     when: "empty",
     title: "Tu cartera vive offline",
-    body: "Los documentos que subís acá funcionan en el aeropuerto sin red. Boarding passes, pasaporte, seguro, vouchers — todo accesible aunque tengas el modo avión activo.",
+    body: "Los documentos que subís acá funcionan en el aeropuerto sin red. Pases de embarque, pasaporte, seguro, vouchers — todo accesible aunque tengas el modo avión activo.",
     tone: "feature",
   },
   "journal-first-photo": {
@@ -91,7 +91,7 @@ export const HINTS: Record<string, HintDef> = {
     id: "offline-tip",
     when: "feature-discovery",
     title: "Funciona en modo avión",
-    body: "Aterrizaste y todavía no tenés conexión: Tampu te muestra el itinerario, los boarding passes, los hoteles. Después sincroniza cuando vuelve la red.",
+    body: "Aterrizaste y todavía no tenés conexión: Tampu te muestra el itinerario, los pases de embarque, los hoteles. Después sincroniza cuando vuelve la red.",
     tone: "feature",
   },
   "today-customize": {

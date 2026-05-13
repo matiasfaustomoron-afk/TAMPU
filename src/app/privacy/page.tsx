@@ -28,7 +28,7 @@ export default function PrivacyPage() {
           <h2 className="text-xl font-semibold mb-2">2. Qué datos guardamos</h2>
           <ul className="list-disc list-inside text-sm space-y-1">
             <li>Información del viaje que vos cargás: destinos, fechas, presupuesto, tareas, gastos, reservas.</li>
-            <li>Documentos críticos que subís al Vault (pasaporte, visas, seguros) — solo metadata + archivo en Supabase Storage.</li>
+            <li>Documentos críticos que subís a tus Documentos (pasaporte, visas, seguros) — solo metadata + archivo en Supabase Storage.</li>
             <li>Tu email + ID de usuario de Supabase Auth (si elegís modo online).</li>
             <li>Preferencias locales: idioma, tema visual.</li>
           </ul>
@@ -48,7 +48,7 @@ export default function PrivacyPage() {
           <h2 className="text-xl font-semibold mb-2">4. Permisos en iOS</h2>
           <ul className="list-disc list-inside text-sm space-y-1">
             <li><strong>Notificaciones locales</strong>: opcional — para recordatorios de deadlines sin internet.</li>
-            <li><strong>Cámara / Photo Library</strong>: opcional — para subir documentos al Vault.</li>
+            <li><strong>Cámara / Photo Library</strong>: opcional — para subir documentos.</li>
             <li><strong>Compartir / Share Sheet</strong>: para exportar resumen del viaje.</li>
           </ul>
           <p className="text-sm mt-2">No usamos: ubicación, contactos, micrófono, salud.</p>

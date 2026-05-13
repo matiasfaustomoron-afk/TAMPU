@@ -367,7 +367,7 @@ export default function VaultPage() {
         };
         return (
           <section className="px-4 mt-2 mb-8">
-            <p className="ios-eyebrow">Pases destacados</p>
+            <p className="ios-eyebrow">{t.vault.featuredPasses}</p>
             <div className="relative" style={{ paddingBottom: critical.length > 1 ? `${(critical.length - 1) * 14}px` : 0 }}>
               {critical.map((f, i) => {
                 const gradient = colorByCategory[f.category] || colorByCategory.other;
@@ -394,7 +394,7 @@ export default function VaultPage() {
             </div>
             {critical.length > 1 && (
               <p className="text-[11px] text-muted-foreground text-center mt-3">
-                Tocá un pase para abrirlo
+                {t.vault.tapToOpen}
               </p>
             )}
           </section>
@@ -467,7 +467,7 @@ export default function VaultPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="sm:col-span-2">
                 <label className="text-[10px] uppercase text-muted-foreground">Nombre</label>
-                <Input value={uploadName} onChange={e => setUploadName(e.target.value)} placeholder="Ej. Boarding pass GRU→DXB" className="mt-1" />
+                <Input value={uploadName} onChange={e => setUploadName(e.target.value)} placeholder={t.vault.namePlaceholder} className="mt-1" />
               </div>
               <div>
                 <label className="text-[10px] uppercase text-muted-foreground">Categoría</label>
@@ -538,7 +538,7 @@ export default function VaultPage() {
             </Button>
             <p className="text-[10px] text-muted-foreground">
               {classifyAuto
-                ? "Al subir, la IA lee el documento, lo clasifica (boarding/pasaporte/seguro/recibo) y extrae datos (vuelo, locator, fechas) en segundos."
+                ? "Al subir, la IA lee el documento, lo clasifica (pase de embarque, pasaporte, seguro, recibo) y extrae datos (vuelo, localizador, fechas) en segundos."
                 : "Clasificación manual. Activá la IA para que rellene los campos automáticamente."}
             </p>
         </div>
@@ -569,7 +569,7 @@ export default function VaultPage() {
         <div className="space-y-3 px-1">
           <EmptyState
             title={files.length === 0 ? "Sin archivos todavía" : t.common.noResults}
-            description={files.length === 0 ? "Tocá 'Subir' y arrastrá tu primer boarding pass, pasaporte o seguro. PDF o imagen, ambos van." : undefined}
+            description={files.length === 0 ? "Tocá 'Subir' y arrastrá tu primer pase de embarque, pasaporte o seguro. PDF o imagen, ambos van." : undefined}
             icon={<FileText className="w-8 h-8" />}
           />
           {files.length === 0 && <HintCard hintId="vault-empty" delay={150} />}

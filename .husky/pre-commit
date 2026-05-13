@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# Tampu — pre-commit hook
+#
+# Defensa-en-profundidad contra leaks accidentales de secrets. El auditor
+# externo señaló (mayo 2026) que .gitignore filtrando `.env*` es necesario
+# pero no suficiente: un dev puede hardcodear una API key dentro de un .ts,
+# pegarla en un .md, o forzar `git add -f .env.local` y .gitignore no lo
+# va a frenar.
+#
+# Este hook escanea SOLO los archivos staged (no todo el repo) para que el
+# commit no se demore. La regex set vive en scripts/audit-secrets.cjs.
+#
+# Si encontrás un falso positivo recurrente, refiná el pattern en el script
+# antes de comentar este hook. Bypasses (commit --no-verify) deben quedar
+# para emergencias documentadas.
+
+# Obtenemos la lista de files staged en modo Added/Copied/Modified/Renamed.
+# Deleted no aplica — no podés leakear desde un archivo que ya no existe.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+# Pasamos la lista al scanner. El scanner toma file paths como args y solo
+# scanea esos (mucho más rápido que un full-repo scan en cada commit).
+# shellcheck disable=SC2086
+node scripts/audit-secrets.cjs $STAGED

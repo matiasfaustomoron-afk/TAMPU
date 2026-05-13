@@ -35,6 +35,37 @@ const nextConfig: NextConfig = {
   // Lo dejamos como instrucción en lugar de require dinámico para no romper el build
   // si la dep no está en package.json.
 
+  // ─── PWA cache headers ───
+  // /sw.js DEBE servirse sin cache (o cache muy corto) para que cada navigation
+  // detecte un SW nuevo post-deploy. El SW mismo cachea agresivamente el resto
+  // del sitio — pero a él mismo no.
+  // En mobile build (output:'export') Next.js ignora headers() — el static
+  // host (Capacitor bundle) tiene que aplicarlos por separado, no aplica acá.
+  ...(!isMobileBuild && {
+    async headers() {
+      return [
+        {
+          source: "/sw.js",
+          headers: [
+            { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+            { key: "Service-Worker-Allowed", value: "/" },
+          ],
+        },
+        {
+          source: "/manifest.webmanifest",
+          headers: [
+            { key: "Cache-Control", value: "public, max-age=3600" },
+            { key: "Content-Type", value: "application/manifest+json" },
+          ],
+        },
+        {
+          source: "/offline.html",
+          headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }],
+        },
+      ];
+    },
+  }),
+
   ...(isMobileBuild && {
     output: "export",
     images: { unoptimized: true },

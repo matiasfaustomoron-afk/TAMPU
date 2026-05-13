@@ -6,6 +6,7 @@ import { I18nProvider } from "@/i18n/provider";
 import { ServiceWorkerRegistrar } from "@/components/layout/service-worker";
 import { NativeBootstrap } from "@/components/layout/native-bootstrap";
 import { GlobalErrorBoundary } from "@/components/layout/error-boundary";
+import { OfflineIndicator } from "@/components/offline-indicator";
 import "./globals.css";
 
 const inter = Inter({
@@ -127,6 +128,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </SupabaseProvider>
         </GlobalErrorBoundary>
         <ServiceWorkerRegistrar />
+        <OfflineIndicator />
         <NativeBootstrap />
       </body>
     </html>

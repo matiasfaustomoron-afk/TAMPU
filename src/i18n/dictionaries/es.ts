@@ -314,6 +314,19 @@ const es = {
   },
 
   // ─── VAULT ───
+  // Decisión auditor mayo 2026: "Vault" se mantiene como brand-name interno
+  // (component names, vars, routes /vault) pero TODA UI visible al user dice
+  // "Documentos". El target premium tradicional (50+, viajero argentino
+  // clásico) lee "Vault" como anglicismo opaco; "Documentos" comunica el job
+  // sin pérdida de premium-feel.
+  //
+  // "Boarding pass" se unifica a "Pase de embarque" en UI español. La var-name
+  // `boarding_pass` se mantiene (es un enum técnico estable), solo cambia el
+  // label visible. En el dict EN se conserva "Boarding Pass" — es el término
+  // correcto y reconocible internacionalmente.
+  //
+  // "Pases destacados" / "pases" como término corto está OK en headers — es
+  // español natural y consistente con MARKETING.md ("Tus pases como cards").
   vault: {
     title: "Documentos",
     subtitle: "Tus pases y documentos del viaje",
@@ -324,9 +337,18 @@ const es = {
     critical: "Críticos",
     offlineReady: "Disponible offline",
     allFiles: "Todos los archivos",
+    // Label visible para "documentos destacados / pases" — usado en /vault.
+    featuredPasses: "Pases destacados",
+    tapToOpen: "Tocá un pase para abrirlo",
+    uploadHint: "Subí tu pase de embarque, pasaporte o seguro. PDF o imagen.",
+    namePlaceholder: "Ej. Pase de embarque GRU→DXB",
+    boardingPass: "Pase de embarque",
+    boardingPasses: "Pases de embarque",
+    orphanBoardings: "Pases sin vincular a reserva",
+    attachBoardingPass: "Adjuntar pase de embarque",
     categories: {
       insurance: "Seguro",
-      boarding_pass: "Boarding Pass",
+      boarding_pass: "Pase de embarque",
       identity: "Identidad",
       reservation: "Reserva",
       transport: "Transporte",
