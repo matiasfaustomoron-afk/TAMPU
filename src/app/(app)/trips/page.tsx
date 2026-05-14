@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@/components/ios/toast";
 import { haptic } from "@/lib/native/platform";
+import { reportError } from "@/lib/utils/errors";
 import { DestinationPhoto } from "@/components/brand/destination-photo";
 import { PresenceBar } from "@/components/collab/presence-bar";
 import { ActivityFeed } from "@/components/collab/activity-feed";
@@ -109,19 +110,10 @@ export default function TripsPage() {
       // Navigate to /today so the user sees the new trip immediately
       router.push("/today");
     } catch (e) {
-      // CRITICAL: sin catch, el error del insert se propagaba silenciosamente,
-      // el wizard quedaba "creando..." sin feedback, y el viaje "desaparecía".
-      // Supabase errors son plain objects con shape { message, code, details, hint };
-      // NO son instancias de Error, así que e instanceof Error falla y String(e) = "[object Object]".
-      const supabaseErr = e as { message?: string; details?: string; code?: string; hint?: string };
-      const message = supabaseErr?.message
-        || supabaseErr?.details
-        || (e instanceof Error ? e.message : null)
-        || JSON.stringify(e);
-      const codePart = supabaseErr?.code ? ` [${supabaseErr.code}]` : "";
-      console.error("[trips] handleCreate failed:", e);
-      toast(`No se pudo crear el viaje${codePart}: ${message}`, "error");
-      haptic("heavy");
+      // reportError desempaca Supabase errors (plain objects) + native Error + strings.
+      // Antes este catch tenía la lógica inline; ahora usamos el helper compartido
+      // para no repetir el patrón en cada lugar.
+      reportError(e, "No se pudo crear el viaje");
     } finally {
       setBusy(false);
     }

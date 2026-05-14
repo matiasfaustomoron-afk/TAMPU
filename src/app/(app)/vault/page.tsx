@@ -194,8 +194,13 @@ export default function VaultPage() {
       // Manual override > IA match
       const manual = manualReservationId ? reservations?.find(r => r.id === manualReservationId) : null;
       const match = manual ? { reservation: manual } : (reservations?.length ? findBestReservationMatch(extractedFields, reservations) : null);
+      // RLS de attachments es `user_id = auth.uid()`. Cuando el uploader es
+      // un editor invitado al trip (no el owner), trip.user_id != auth.uid()
+      // → RLS rechaza. Obtenemos el caller real de la sesión.
+      const { data: { user: callerUser } } = await client.auth.getUser();
+      if (!callerUser) { alert("Sesión expirada. Volvé a hacer login."); setUploading(false); return; }
       const { error: insertErr } = await client.from("attachments").insert({
-        trip_id: trip.id, user_id: trip.user_id,
+        trip_id: trip.id, user_id: callerUser.id,
         entity_type: match ? "reservation" : "trip",
         entity_id: match ? match.reservation.id : trip.id,
         category: uploadCategory, file_name: uploadName || selectedFile.name,

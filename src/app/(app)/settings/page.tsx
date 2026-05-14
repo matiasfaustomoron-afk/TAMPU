@@ -12,6 +12,7 @@ import {
   useBudgetSummary,
 } from "@/lib/hooks/use-trip-data";
 import { generateTripSummaryPDF } from "@/lib/pdf/trip-summary";
+import { reportError } from "@/lib/utils/errors";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
 import { LOCALES, LOCALE_LABELS } from "@/i18n/config";
@@ -255,12 +256,15 @@ export default function SettingsPage() {
     try {
       const res = await fetch("/api/whatsapp/unlink", { method: "DELETE" });
       if (!res.ok) {
-        toast("No pudimos desvincular", "error");
-        setWaBusy(false);
+        const errText = await res.text().catch(() => "");
+        toast(`No pudimos desvincular (${res.status})${errText ? ": " + errText.slice(0, 80) : ""}`, "error");
         return;
       }
       toast("WhatsApp desvinculado", "info");
       await refreshWa();
+    } catch (e) {
+      // Network/parse errors antes quedaban mudos. Ahora damos feedback claro.
+      reportError(e, "No pudimos desvincular");
     } finally {
       setWaBusy(false);
     }

@@ -11,7 +11,13 @@ export default function ProfilePage() {
   const { t, locale } = useI18n();
   const { user, mode, client } = useSupabase();
   const router = useRouter();
-  const handleLogout = async () => { if (client) await client.auth.signOut(); router.push("/login"); router.refresh(); };
+  const handleLogout = async () => {
+    if (client) await client.auth.signOut({ scope: "global" });
+    // window.location.href forces full reload so middleware sees the cleared cookies.
+    // router.push tiene race con la propagación de cookie clear (mismo bug que el signin original).
+    // scope: "global" cierra sesión en TODAS las tabs/devices del user, no solo esta.
+    window.location.href = "/login";
+  };
   return (
     <div className="space-y-6 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader title={t.profile.title} subtitle={t.profile.subtitle} />

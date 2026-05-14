@@ -22,6 +22,7 @@ import { SectionHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { reportError } from "@/lib/utils/errors";
 
 interface WhatsAppMessageRow {
   id: string;
@@ -157,6 +158,10 @@ export default function WhatsAppInboxPage() {
       } else {
         setMessages([]);
       }
+    } catch (e) {
+      // Sin catch antes, errores de JSON parse o network quedaban como unhandled
+      // rejection y el spinner desaparecía sin feedback al user.
+      reportError(e, "No se pudo cargar WhatsApp");
     } finally {
       setLoading(false);
     }
