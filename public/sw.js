@@ -43,7 +43,11 @@
 //     rutas y cache de `_next/static/*` (que en mobile son file:// + cache HTTP).
 // ────────────────────────────────────────────────────────────────────────────
 
-const VERSION = "tampu-v20-offline-aggressive-2026-05";
+// IMPORTANTE: bumpear esta version en CADA deploy con cambios en bundles client
+// (chunks, server actions inlineadas, etc.). El SW usa skipWaiting + clients.claim
+// (líneas ~97 y activate handler) así que el bump invalida cache y trae el bundle
+// nuevo en el primer hit. Sin bump, los users con SW instalado siguen con cache stale.
+const VERSION = "tampu-v21-fix-errors-batch-2026-05-14";
 const SHELL_CACHE  = `${VERSION}-shell`;
 const PAGES_CACHE  = `${VERSION}-pages`;
 const ASSETS_CACHE = `${VERSION}-assets`;

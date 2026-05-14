@@ -369,6 +369,9 @@ export async function recordProxyCall(
     tokensIn: number;
     tokensOut: number;
     costUsd: number;
+    provider?: "anthropic" | "gemini" | "tampu";
+    model?: string;
+    userId?: string | null;
   },
 ): Promise<void> {
   // Bump L1 inmediato (latencia 0 para la siguiente request en la misma instancia)
@@ -387,9 +390,14 @@ export async function recordProxyCall(
   const supa = createSupabaseService();
   if (!supa) return;
   try {
+    // provider es NOT NULL + CHECK ('anthropic','gemini','tampu') en la DB.
+    // Si el caller no lo pasa, default a 'tampu' (que ya está en la lista) para no romper.
     await supa.from("ai_proxy_usage").insert({
       device_fingerprint: identifier,
       endpoint: meta.endpoint,
+      provider: meta.provider ?? "tampu",
+      model: meta.model ?? null,
+      user_id: meta.userId ?? null,
       tokens_in: Math.max(0, Math.floor(meta.tokensIn)),
       tokens_out: Math.max(0, Math.floor(meta.tokensOut)),
       cost_usd: Math.max(0, Number(meta.costUsd.toFixed(6))),

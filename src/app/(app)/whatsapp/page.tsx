@@ -22,7 +22,7 @@ import { SectionHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { reportError } from "@/lib/utils/errors";
+import { reportError, describeError } from "@/lib/utils/errors";
 
 interface WhatsAppMessageRow {
   id: string;
@@ -211,7 +211,9 @@ export default function WhatsAppInboxPage() {
       setConfirmingId(null);
       await fetchAll();
     } catch (e) {
-      setConfirmError(e instanceof Error ? e.message : String(e));
+      // Supabase errors son plain objects (no Error instance). String(e) = "[object Object]".
+      const { message } = describeError(e);
+      setConfirmError(message);
     } finally {
       setConfirming(false);
     }
