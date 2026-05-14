@@ -69,27 +69,27 @@ comment on column public.ai_proxy_usage.metadata is
 -- ──────────────────────────────────────────────────────────────────────────
 -- Índices
 --
--- Los índices con date_trunc son funcionales: PostgreSQL los usa cuando la
--- query filtra por el mismo expression (`where date_trunc('day', created_at) = ...`).
--- IMMUTABLE: date_trunc('day', timestamptz) es estable solo si la timezone
--- de la sesión no cambia. Como insertamos siempre con now() (UTC en el
--- servidor) y consultamos del backend, está OK; documentamos el supuesto.
+-- Los índices con date_trunc requieren expresión IMMUTABLE. date_trunc('day',
+-- timestamptz) es STABLE (depende de la TZ de sesión); el wrapper
+-- `(created_at AT TIME ZONE 'UTC')::date` es IMMUTABLE porque convierte
+-- timestamptz → timestamp en UTC (constante) y casta a date. Las queries
+-- deben usar el MISMO expression para que el planner aproveche el índice.
 -- ──────────────────────────────────────────────────────────────────────────
 
 create index if not exists idx_aipu_user_day
-  on public.ai_proxy_usage (user_id, (date_trunc('day', created_at)));
+  on public.ai_proxy_usage (user_id, ((created_at at time zone 'UTC')::date));
 
 create index if not exists idx_aipu_fingerprint_day
-  on public.ai_proxy_usage (device_fingerprint, (date_trunc('day', created_at)));
+  on public.ai_proxy_usage (device_fingerprint, ((created_at at time zone 'UTC')::date));
 
 create index if not exists idx_aipu_endpoint_day
-  on public.ai_proxy_usage (endpoint, (date_trunc('day', created_at)));
+  on public.ai_proxy_usage (endpoint, ((created_at at time zone 'UTC')::date));
 
 create index if not exists idx_aipu_created_at
   on public.ai_proxy_usage (created_at desc);
 
 create index if not exists idx_aipu_global_day_cost
-  on public.ai_proxy_usage ((date_trunc('day', created_at)), cost_usd);
+  on public.ai_proxy_usage (((created_at at time zone 'UTC')::date), cost_usd);
 
 comment on index public.idx_aipu_user_day is
   'Para "cuántos tokens consumió el user X hoy/este mes". Hot path del rate-limit.';

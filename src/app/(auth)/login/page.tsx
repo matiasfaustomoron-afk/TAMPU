@@ -1,4 +1,7 @@
 "use client";
+
+export const dynamic = "force-dynamic";
+
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Compass, AlertTriangle } from "lucide-react";

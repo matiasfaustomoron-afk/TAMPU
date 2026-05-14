@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 /**
  * /passcode — flow dedicado de setup / unlock del passcode de cifrado.
  *
