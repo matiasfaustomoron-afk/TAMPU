@@ -32,9 +32,17 @@ function LoginForm() {
     if (!sb) { setError("Supabase not configured"); setLoading(false); return; }
 
     if (mode === "login") {
-      const { error: ae } = await sb.auth.signInWithPassword({ email, password });
+      const { data, error: ae } = await sb.auth.signInWithPassword({ email, password });
       if (ae) { setError(ae.message); setLoading(false); return; }
-      router.push(next); router.refresh();
+      if (!data?.session) {
+        setError("Login OK pero no se creó sesión — probablemente tu email no está confirmado todavía");
+        setLoading(false);
+        return;
+      }
+      // CRÍTICO: full page reload (no router.push) para que el middleware
+      // server-side vea las cookies recién seteadas por @supabase/ssr.
+      // router.push tiene race condition con la propagación de document.cookie.
+      window.location.href = next;
       return;
     }
 
@@ -51,7 +59,8 @@ function LoginForm() {
 
     if (data?.session) {
       // Email confirmation está deshabilitado en Supabase → session inmediata → ir al app
-      router.push(next); router.refresh();
+      // window.location.href forces full reload — necesario para que middleware vea cookies.
+      window.location.href = next;
     } else {
       // Email confirmation activado → user tiene que clickear link del mail
       setSignupSent(email);
