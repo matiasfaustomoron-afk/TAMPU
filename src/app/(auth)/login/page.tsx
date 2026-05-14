@@ -21,8 +21,63 @@ function LoginForm() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false); const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const handleAuth = async () => { if (!email || !password) { setError(t.auth.emailRequired); return; } setLoading(true); setError(null); const sb = createClient(); if (!sb) { setError("Supabase not configured"); setLoading(false); return; } const { error: ae } = mode === "login" ? await sb.auth.signInWithPassword({ email, password }) : await sb.auth.signUp({ email, password }); if (ae) { setError(ae.message); setLoading(false); return; } router.push(next); router.refresh(); };
+  // Cuando el signup requiere email confirmation, NO hay session — mostramos
+  // pantalla "revisá tu mail" en vez de intentar push a /today (que rebota a /login).
+  const [signupSent, setSignupSent] = useState<string | null>(null);
+
+  const handleAuth = async () => {
+    if (!email || !password) { setError(t.auth.emailRequired); return; }
+    setLoading(true); setError(null);
+    const sb = createClient();
+    if (!sb) { setError("Supabase not configured"); setLoading(false); return; }
+
+    if (mode === "login") {
+      const { error: ae } = await sb.auth.signInWithPassword({ email, password });
+      if (ae) { setError(ae.message); setLoading(false); return; }
+      router.push(next); router.refresh();
+      return;
+    }
+
+    // Signup
+    const { data, error: ae } = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        // Redirect explícito post-confirmation al deploy actual (no localhost).
+        emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` : undefined,
+      },
+    });
+    if (ae) { setError(ae.message); setLoading(false); return; }
+
+    if (data?.session) {
+      // Email confirmation está deshabilitado en Supabase → session inmediata → ir al app
+      router.push(next); router.refresh();
+    } else {
+      // Email confirmation activado → user tiene que clickear link del mail
+      setSignupSent(email);
+      setLoading(false);
+    }
+  };
   const handleDemo = () => { setLoading(true); router.push("/today"); };
+
+  if (signupSent) {
+    return (
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <Compass className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl font-bold">{t.common.appName}</h1>
+          </div>
+        </div>
+        <div className="p-6 rounded-lg border border-primary/30 bg-primary/5 space-y-3 text-center">
+          <h2 className="font-semibold">Revisá tu mail</h2>
+          <p className="text-sm text-muted-foreground">Te mandamos un link a <strong>{signupSent}</strong>. Clickeá ahí para confirmar y entrar a Tampu.</p>
+          <p className="text-xs text-muted-foreground">Si no te llega en unos minutos, revisá spam.</p>
+          <button onClick={() => { setSignupSent(null); setMode("login"); }} className="text-xs text-primary underline mt-2">Usar otro mail</button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isSupabaseConfigured && !isDemoEnabled) {
     return (<div className="w-full max-w-sm space-y-6"><div className="text-center"><div className="flex items-center justify-center gap-3 mb-6"><Compass className="w-8 h-8 text-primary" /><h1 className="text-2xl font-bold">{t.common.appName}</h1></div></div><div className="p-6 rounded-lg border border-destructive/30 bg-destructive/5 space-y-3"><div className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-5 h-5" /><span className="font-semibold">{t.auth.notConfigured}</span></div><p className="text-sm text-muted-foreground">{t.auth.notConfiguredDesc}</p></div></div>);
