@@ -37,6 +37,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Supabase migration bundle (derived artifact for manual SQL Editor paste)
+supabase/migrations-bundle.sql
+supabase/copy-bundle.ps1
+
 # vercel / netlify deploy outputs
 .vercel
 .netlify
