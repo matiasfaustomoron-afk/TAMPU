@@ -16,7 +16,7 @@ Template editable. Reemplazá `<vercel>.app` por la URL real, `<código>` por la
 >
 > Sos 1 de 5 que la prueba antes de que la suelte públicamente. Tu input me importa más que cualquier review post-launch.
 >
-> **Link**: https://<vercel>.app
+> **Link**: https://tampu-delta.vercel.app
 > **Cuenta**: con tu email, te llega magic link al inbox.
 > **WhatsApp**: mandale `join <código>` por WhatsApp al `+1 415 523 8886` y ya quedás en el sandbox. Después en Settings → WhatsApp vinculás tu número.
 >
@@ -85,7 +85,7 @@ Gracias por estar acá temprano.
 
 No le mandes el link a nadie hasta que todo esto esté tildado.
 
-- [ ] Vercel deploy funciona en `https://<vercel>.app` (smoke test sección 8 del runbook pasó)
+- [ ] Vercel deploy funciona en `https://tampu-delta.vercel.app` (smoke test sección 8 del runbook pasó)
 - [ ] Magic link emails llegan al inbox (probaste con tu propio email)
 - [ ] Stripe en **test mode** — confirmado en el toggle del dashboard
 - [ ] Twilio sandbox configurado, palabra-código `join <X>` lista para repartir

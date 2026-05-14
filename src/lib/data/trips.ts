@@ -26,10 +26,27 @@ export async function fetchCities(db: SupabaseClient, tripId: string): Promise<C
 }
 
 export async function insertTrip(db: SupabaseClient, trip: Omit<Trip, "id" | "user_id" | "created_at" | "updated_at" | "is_active">): Promise<Trip | null> {
-  // Deactivate other trips first
-  await db.from("trips").update({ is_active: false }).neq("id", "00000000-0000-0000-0000-000000000000");
-  const { data, error } = await db.from("trips").insert({ ...trip, is_active: true }).select().maybeSingle();
+  // CRITICAL: la columna `user_id` es NOT NULL + RLS exige user_id = auth.uid().
+  // Tenemos que obtenerlo de la sesión antes de insertar. Sin esto el insert
+  // fallaba silenciosamente con "null value in column user_id violates not-null
+  // constraint" y el viaje "desaparecía" desde la perspectiva del user.
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) throw new Error("No hay sesión activa — no se puede crear el viaje. Volvé a hacer login.");
+
+  // Insert FIRST (más importante). Después desactivamos los otros — si falla el
+  // insert, el user no queda sin trip activo (rollback implícito por orden).
+  const { data, error } = await db.from("trips")
+    .insert({ ...trip, user_id: user.id, is_active: true })
+    .select()
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Insert ok pero la DB no devolvió la fila — race condition o RLS bloqueando el select.");
+
+  // Now safe to deactivate previous active trips (solo los del user).
+  await db.from("trips").update({ is_active: false })
+    .eq("user_id", user.id)
+    .neq("id", data.id);
+
   return data;
 }
 

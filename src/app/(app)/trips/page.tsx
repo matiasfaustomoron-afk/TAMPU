@@ -108,6 +108,13 @@ export default function TripsPage() {
       refetch();
       // Navigate to /today so the user sees the new trip immediately
       router.push("/today");
+    } catch (e) {
+      // CRITICAL: sin catch, el error del insert se propagaba silenciosamente,
+      // el wizard quedaba "creando..." sin feedback, y el viaje "desaparecía".
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[trips] handleCreate failed:", e);
+      toast(`No se pudo crear el viaje: ${message}`, "error");
+      haptic("heavy");
     } finally {
       setBusy(false);
     }
