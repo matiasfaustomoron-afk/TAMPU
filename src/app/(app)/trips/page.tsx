@@ -111,9 +111,16 @@ export default function TripsPage() {
     } catch (e) {
       // CRITICAL: sin catch, el error del insert se propagaba silenciosamente,
       // el wizard quedaba "creando..." sin feedback, y el viaje "desaparecía".
-      const message = e instanceof Error ? e.message : String(e);
+      // Supabase errors son plain objects con shape { message, code, details, hint };
+      // NO son instancias de Error, así que e instanceof Error falla y String(e) = "[object Object]".
+      const supabaseErr = e as { message?: string; details?: string; code?: string; hint?: string };
+      const message = supabaseErr?.message
+        || supabaseErr?.details
+        || (e instanceof Error ? e.message : null)
+        || JSON.stringify(e);
+      const codePart = supabaseErr?.code ? ` [${supabaseErr.code}]` : "";
       console.error("[trips] handleCreate failed:", e);
-      toast(`No se pudo crear el viaje: ${message}`, "error");
+      toast(`No se pudo crear el viaje${codePart}: ${message}`, "error");
       haptic("heavy");
     } finally {
       setBusy(false);
