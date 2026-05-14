@@ -443,15 +443,42 @@ export function _resetRateLimitStore(): void {
 }
 
 /**
- * Helper compartido para estimar costo USD de una call. Usa los precios de
- * Anthropic Haiku 4.5 (mayo 2026):
- *   - input: USD 1 / 1M tokens = USD 0.000001 / token
- *   - output: USD 5 / 1M tokens = USD 0.000005 / token
- * Si en el futuro cambiamos a Sonnet, ajustar acá.
+ * Pricing por modelo (USD por millón de tokens). Mayo 2026.
+ * Keys: el `model` concreto que devuelve el provider (NO el alias "haiku"/"sonnet").
+ * Fallback: si el modelo no está en la tabla, asumimos Haiku (más barato → conservador
+ * para budget, pero NO subestimamos masivamente en caso de error).
  */
-export function estimateCostUsd(tokensIn: number, tokensOut: number, model: "haiku" | "sonnet" = "haiku"): number {
-  if (model === "sonnet") {
-    return tokensIn * 0.000003 + tokensOut * 0.000015;
-  }
-  return tokensIn * 0.000001 + tokensOut * 0.000005;
+const PRICING: Record<string, { input: number; output: number }> = {
+  // Anthropic
+  "claude-haiku-4-5": { input: 1, output: 5 },
+  "claude-sonnet-4-5": { input: 3, output: 15 },
+  // Gemini
+  "gemini-2.0-flash": { input: 0.075, output: 0.3 },
+  // Tampu proxy (defaultea a Haiku — el modelo real lo elige el endpoint)
+  "tampu": { input: 1, output: 5 },
+};
+
+/**
+ * Helper compartido para estimar costo USD de una call. Acepta:
+ *  - `model` string concreto (preferido): "claude-haiku-4-5", "claude-sonnet-4-5",
+ *    "gemini-2.0-flash". Lookup directo en PRICING.
+ *  - Alias legacy "haiku"/"sonnet" (compat con callers viejos): mapean a Anthropic.
+ *
+ * Devuelve USD totales (NO por millón). Ejemplo: 1000 tokens in con haiku
+ * = 1000 * (1 / 1_000_000) = USD 0.001.
+ */
+export function estimateCostUsd(
+  tokensIn: number,
+  tokensOut: number,
+  model: string = "haiku",
+): number {
+  // Compat con callers que todavía pasan los alias.
+  const concreteModel = model === "haiku"
+    ? "claude-haiku-4-5"
+    : model === "sonnet"
+      ? "claude-sonnet-4-5"
+      : model;
+  const price = PRICING[concreteModel] ?? PRICING["claude-haiku-4-5"];
+  // PRICING está en USD / 1M tokens → dividir entre 1_000_000.
+  return (tokensIn * price.input + tokensOut * price.output) / 1_000_000;
 }

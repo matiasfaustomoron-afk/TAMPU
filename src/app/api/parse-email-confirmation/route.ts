@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { heuristicMultiParse, type ParsedBooking } from "@/lib/parsing/email-parser";
+import { maskPII } from "@/lib/ai/pii-filter";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
 
 /**
  * Email confirmation parser — v2 multibooking + multilingüe.
@@ -44,15 +47,21 @@ interface ParseResult {
   bookings: ParsedBooking[];
   source: "claude" | "heuristic" | "mixed";
   languages_detected: string[];
+  /** Carrier libre (string), max 50 chars. NUNCA un enum cerrado — los OTAs
+   *  rotan nombres y agregamos nuevos cada mes. */
   carrier_hint: string | null;
   warnings: string[];
+  provider?: string | null;
+  model?: string | null;
+  degraded?: boolean;
+  reason?: string;
 }
 
 // ─── System prompt — multilingüe + LatAm-aware ───
 const SYSTEM = `Sos un parser de emails de confirmación de viaje. Recibís texto crudo (puede ser pegado de email, SMS, screenshot OCR, o WhatsApp) y devolvés UN ARRAY DE BOOKINGS en JSON estricto.
 
 REGLAS DURAS:
-- Devolvé { "bookings": [ ... ], "language": "es"|"pt"|"en"|"fr"|"it", "carrier_hint": "LATAM"|"Aerolineas Argentinas"|"Gol"|"Azul"|"Avianca"|"Copa"|"Despegar"|"Decolar"|"Almundo"|"Airbnb"|"Booking"|"Marriott"|"Hilton"|"Other"|null }
+- Devolvé { "bookings": [ ... ], "language": "es"|"pt"|"en"|"fr"|"it", "carrier_hint": string libre con el nombre del carrier (ej "LATAM", "Aerolineas Argentinas", "Gol", "Despegar", "Airbnb", "Booking.com") o null si no se identifica. Máx 50 caracteres — usá el nombre real, no inventes uno nuevo. }
 - Un email puede tener VARIOS bookings: ida + vuelta = 2 bookings; vuelo + traslado + hotel = 3 bookings; vuelo + seguro = 2 bookings. Separá cada uno como item del array.
 - Si NO podés extraer al menos un type+provider+algo más, devolvé bookings: [].
 
@@ -111,34 +120,69 @@ interface LLMResponse {
   carrier_hint: string | null;
 }
 
-async function llmParse(req: NextRequest, text: string): Promise<LLMResponse | null> {
+interface LLMParseEnvelope {
+  data: LLMResponse | null;
+  degraded?: { reason: "json_parse_failed" };
+  provider: "anthropic" | "gemini";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+async function llmParse(req: NextRequest, text: string): Promise<LLMParseEnvelope | null> {
   const { provider, key } = selectProvider(req);
   if (!provider || !key) return null;
 
-  const raw = await callLLM(provider, key, {
+  // SECURITY: email crudo puede traer tarjetas/IDs — `maskPII` antes de salir.
+  const masked = maskPII(text);
+
+  const rich = await callLLMRich(provider, key, {
     system: SYSTEM,
-    userMessage: text.slice(0, 16_000),
+    userMessage: masked.slice(0, 16_000),
     maxTokens: 2048,
     timeoutMs: 30_000,
+    model: "haiku",
   });
-  if (!raw) return null;
+  if (!rich) return null;
 
   try {
-    const clean = raw
+    const clean = rich.text
       .replace(/^```(json)?\s*/i, "")
       .replace(/```\s*$/, "")
       .trim();
     const parsed = JSON.parse(clean) as LLMResponse;
     // Defensive: garantizar shape
-    if (!Array.isArray(parsed.bookings)) return null;
+    if (!Array.isArray(parsed.bookings)) {
+      return {
+        data: null,
+        degraded: { reason: "json_parse_failed" },
+        provider: rich.provider,
+        model: rich.model,
+        inputTokens: rich.usage.inputTokens,
+        outputTokens: rich.usage.outputTokens,
+      };
+    }
     return {
-      bookings: parsed.bookings,
-      language: parsed.language || "unknown",
-      carrier_hint: parsed.carrier_hint || null,
+      data: {
+        bookings: parsed.bookings,
+        language: parsed.language || "unknown",
+        carrier_hint: parsed.carrier_hint || null,
+      },
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
     };
   } catch (err) {
     console.warn("[parse-email-confirmation] LLM JSON parse failed:", err);
-    return null;
+    return {
+      data: null,
+      degraded: { reason: "json_parse_failed" },
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+    };
   }
 }
 
@@ -167,14 +211,30 @@ export async function POST(req: NextRequest) {
   }
 
   const text = body.text;
-  const { key } = selectProvider(req);
+  const { key, source: keySource } = selectProvider(req);
   const warnings: string[] = [];
 
   // 1) Intentar LLM
-  let llm: LLMResponse | null = null;
+  let envelope: LLMParseEnvelope | null = null;
   if (key) {
-    llm = await llmParse(req, text);
-    if (!llm) warnings.push("LLM falló o devolvió shape inválido; cayó a heurística.");
+    envelope = await llmParse(req, text);
+    if (!envelope) {
+      warnings.push("LLM falló (no response); cayó a heurística.");
+    } else if (envelope.data === null) {
+      warnings.push("LLM devolvió JSON inválido; cayó a heurística.");
+    }
+    // Record usage real para budget / circuit breaker
+    if (envelope) {
+      const costUsd = estimateCostUsd(envelope.inputTokens, envelope.outputTokens, envelope.model);
+      void recordProxyCall(keySource === "byok" ? "byok:parse-email" : "fallback:parse-email", {
+        endpoint: "/api/parse-email-confirmation",
+        tokensIn: envelope.inputTokens,
+        tokensOut: envelope.outputTokens,
+        costUsd,
+        provider: envelope.provider,
+        model: envelope.model,
+      }).catch((e) => captureException(e, { tag: "parse-email.record" }));
+    }
   } else {
     warnings.push("Sin key conectada — usando heurística local (menos preciso).");
   }
@@ -183,27 +243,37 @@ export async function POST(req: NextRequest) {
   const heuristic = heuristicMultiParse(text);
 
   // 3) Decidir output: si el LLM devolvió ≥1 booking de high/medium, usamos LLM.
-  //    Si no, fallback heurístico.
+  //    Si no, fallback heurístico (flagged degraded si el LLM respondió pero falló parse).
   const result: ParseResult = (() => {
-    if (llm && llm.bookings.length > 0) {
-      const goodEnough = llm.bookings.filter((b) => b.confidence !== "low");
+    const llmData = envelope?.data;
+    if (llmData && llmData.bookings.length > 0) {
+      const goodEnough = llmData.bookings.filter((b) => b.confidence !== "low");
       if (goodEnough.length > 0) {
         return {
-          bookings: llm.bookings,
+          bookings: llmData.bookings,
           source: "claude" as const,
-          languages_detected: [llm.language],
-          carrier_hint: llm.carrier_hint,
+          languages_detected: [llmData.language],
+          carrier_hint: llmData.carrier_hint,
           warnings,
+          provider: envelope?.provider ?? null,
+          model: envelope?.model ?? null,
         };
       }
     }
-    return {
+    const fallback: ParseResult = {
       bookings: heuristic.bookings,
       source: "heuristic" as const,
       languages_detected: heuristic.languages,
       carrier_hint: heuristic.carrier_hint,
       warnings,
+      provider: envelope?.provider ?? null,
+      model: envelope?.model ?? null,
     };
+    if (envelope?.degraded) {
+      fallback.degraded = true;
+      fallback.reason = envelope.degraded.reason;
+    }
+    return fallback;
   })();
 
   return withCors(NextResponse.json(result), origin);

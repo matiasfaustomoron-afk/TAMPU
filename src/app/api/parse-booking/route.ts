@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
+import { maskPII } from "@/lib/ai/pii-filter";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
 
 // ─── Booking parser ───
 // Receives raw text from a confirmation email/SMS, extracts a Reservation candidate.
@@ -40,7 +43,7 @@ interface ParsedBooking {
   confidence: "high" | "medium" | "low";
 }
 
-const SYSTEM = `Eres un parser de emails de confirmación de viajes. Recibís texto (puede ser pegado de un email, SMS o app) y extraés UN SOLO booking en formato JSON estricto.
+const SYSTEM = `Sos un parser argentino de emails de confirmación de viajes. Recibís texto (puede venir pegado de un email, SMS o app) y extraés UN SOLO booking en formato JSON estricto.
 
 Reglas:
 - type: flight | accommodation | train | bus | tour | insurance | connectivity | other
@@ -93,20 +96,62 @@ function heuristicParse(text: string): ParsedBooking {
   };
 }
 
-async function llmParse(req: NextRequest, text: string): Promise<ParsedBooking | null> {
+interface LlmParseOk {
+  parsed: ParsedBooking;
+  provider: "anthropic" | "gemini";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+interface LlmParseErr {
+  parsed: null;
+  degraded: true;
+  reason: "json_parse_failed";
+  provider: "anthropic" | "gemini";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+async function llmParse(
+  req: NextRequest,
+  text: string,
+): Promise<LlmParseOk | LlmParseErr | null> {
+  // SECURITY: el endpoint recibe texto crudo de emails; aplicamos `maskPII`
+  // ANTES de mandar al provider para no exfiltrar tarjetas/DNI/CUIT.
+  const masked = maskPII(text);
   const { provider, key } = selectProvider(req);
   if (!provider || !key) return null;
-  const raw = await callLLM(provider, key, {
+  const rich = await callLLMRich(provider, key, {
     system: SYSTEM,
-    userMessage: text.slice(0, 12_000),
+    userMessage: masked.slice(0, 12_000),
     maxTokens: 1024,
     timeoutMs: 25_000,
+    model: "haiku",
   });
-  if (!raw) return null;
+  if (!rich) return null;
   try {
-    const clean = raw.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    return JSON.parse(clean) as ParsedBooking;
-  } catch { return null; }
+    const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    const parsed = JSON.parse(clean) as ParsedBooking;
+    return {
+      parsed,
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+    };
+  } catch {
+    return {
+      parsed: null,
+      degraded: true,
+      reason: "json_parse_failed",
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+    };
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -115,10 +160,57 @@ export async function POST(req: NextRequest) {
   if (!body?.text || body.text.length < 20) {
     return withCors(NextResponse.json({ error: "Texto muy corto" }, { status: 400 }), origin);
   }
+  // Truncamos ANTES de maskPII para no procesar texto que no vamos a usar.
   const text = body.text.slice(0, 16_000);
-  const { key } = selectProvider(req);
+  const { key, source } = selectProvider(req);
   let parsed: ParsedBooking | null = null;
-  if (key) parsed = await llmParse(req, text);
+  let degraded: { reason: string } | null = null;
+  let respProvider: string | null = null;
+  let respModel: string | null = null;
+
+  if (key) {
+    const r = await llmParse(req, text);
+    if (r && r.parsed) {
+      parsed = r.parsed;
+      respProvider = r.provider;
+      respModel = r.model;
+      // Record real usage + model
+      const costUsd = estimateCostUsd(r.inputTokens, r.outputTokens, r.model);
+      void recordProxyCall(source === "byok" ? "byok:parse-booking" : "fallback:parse-booking", {
+        endpoint: "/api/parse-booking",
+        tokensIn: r.inputTokens,
+        tokensOut: r.outputTokens,
+        costUsd,
+        provider: r.provider,
+        model: r.model,
+      }).catch((e) => captureException(e, { tag: "parse-booking.record" }));
+    } else if (r && r.parsed === null) {
+      // LLM respondió pero no pudimos parsear el JSON — flag degraded.
+      degraded = { reason: r.reason };
+      respProvider = r.provider;
+      respModel = r.model;
+      const costUsd = estimateCostUsd(r.inputTokens, r.outputTokens, r.model);
+      void recordProxyCall(source === "byok" ? "byok:parse-booking" : "fallback:parse-booking", {
+        endpoint: "/api/parse-booking",
+        tokensIn: r.inputTokens,
+        tokensOut: r.outputTokens,
+        costUsd,
+        provider: r.provider,
+        model: r.model,
+      }).catch((e) => captureException(e, { tag: "parse-booking.record" }));
+    }
+  }
   if (!parsed) parsed = heuristicParse(text);
-  return withCors(NextResponse.json({ parsed, source: key && parsed.confidence !== "low" ? "claude" : "heuristic" }), origin);
+
+  const responseBody: Record<string, unknown> = {
+    parsed,
+    source: degraded ? "heuristic" : (key && parsed.confidence !== "low" ? "claude" : "heuristic"),
+    provider: respProvider,
+    model: respModel,
+  };
+  if (degraded) {
+    responseBody.degraded = true;
+    responseBody.reason = degraded.reason;
+  }
+  return withCors(NextResponse.json(responseBody), origin);
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { heuristicItinerary, type GenerateItineraryPrompt, type DraftItinerary } from "@/lib/ai/itinerary-generator";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { captureException } from "@/lib/observability/sentry";
@@ -176,40 +176,54 @@ export async function POST(req: NextRequest) {
   }
 
   const userPrompt = buildPrompt(body);
-  const raw = await callLLM(provider, key, {
-    system: "Sos un planificador de viajes experto. Devolvés JSON puro, sin markdown ni texto extra.",
+  const rich = await callLLMRich(provider, key, {
+    system: "Sos un planificador de viajes argentino experto. Devolvés JSON puro, sin markdown ni texto extra.",
     userMessage: userPrompt,
     maxTokens: MAX_TOKENS_HARD,
     timeoutMs: 55_000,
+    // Sonnet para itinerary — requiere planning capacity. Haiku no llega.
+    model: "sonnet",
   });
 
-  // Log usage para analytics + circuit breaker (ai_proxy_usage)
-  if (raw) {
-    // Estimación rough — los providers actuales (callLLM) no devuelven usage.
-    // Hardcodeamos un upper bound conservador: input ~prompt.length/4 chars→tokens,
-    // output capped a MAX_TOKENS_HARD.
-    const tokensIn = Math.ceil(userPrompt.length / 4);
-    const tokensOut = MAX_TOKENS_HARD; // worst case — fairer al billing
-    const costUsd = estimateCostUsd(tokensIn, tokensOut, "sonnet");
+  // Log usage REAL del provider — ya no worst-case.
+  if (rich) {
+    const tokensIn = rich.usage.inputTokens;
+    const tokensOut = rich.usage.outputTokens;
+    const costUsd = estimateCostUsd(tokensIn, tokensOut, rich.model);
     void recordProxyCall(source === "byok" ? "byok:itinerary" : "fallback:itinerary", {
       endpoint: "/api/generate-itinerary",
       tokensIn,
       tokensOut,
       costUsd,
+      provider: rich.provider,
+      model: rich.model,
     }).catch((e) => captureException(e, { tag: "generate-itinerary.record" }));
   }
 
-  if (!raw) {
+  if (!rich) {
     const fallback = heuristicItinerary(body);
     return withCors(NextResponse.json({ ok: true, itinerary: fallback, fallback: true, reason: "llm-failed" }), origin);
   }
 
-  const itin = safeParseItinerary(raw, body);
+  const itin = safeParseItinerary(rich.text, body);
   if (!itin) {
     const fallback = heuristicItinerary(body);
-    return withCors(NextResponse.json({ ok: true, itinerary: fallback, fallback: true, reason: "parse-failed" }), origin);
+    return withCors(NextResponse.json({
+      ok: true,
+      itinerary: fallback,
+      fallback: true,
+      reason: "parse-failed",
+      degraded: true,
+      provider: rich.provider,
+      model: rich.model,
+    }), origin);
   }
 
   itin.generated_by = provider;
-  return withCors(NextResponse.json({ ok: true, itinerary: itin }), origin);
+  return withCors(NextResponse.json({
+    ok: true,
+    itinerary: itin,
+    provider: rich.provider,
+    model: rich.model,
+  }), origin);
 }

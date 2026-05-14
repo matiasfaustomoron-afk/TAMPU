@@ -124,12 +124,17 @@ export function ExpenseFab() {
           </Card>
         </div>
       )}
+      {/* ─── FAB stacking ───
+         ExpenseFab vive ARRIBA en el stack (solo aparece en /expenses).
+         bottom = safe-area + 216px (encima de MoreFab que está a 152, que a su
+         vez está encima de AssistantFab a 88). Ver `more-fab.tsx` para el ASCII
+         del stack completo. */}
       <button
         onClick={() => { haptic("light"); setOpen(true); }}
-        aria-label="Agregar gasto rápido"
+        aria-label="Agregar gasto"
         title="Agregar gasto rápido"
-        className="fixed z-40 bottom-[88px] right-4 w-14 h-14 rounded-2xl text-white shadow-[0_8px_24px_rgba(0,0,0,0.25),0_0_0_1px_rgba(255,255,255,0.10)_inset] bg-[linear-gradient(135deg,_oklch(0.68_0.16_38),_oklch(0.55_0.18_55))] hover:scale-105 hover:shadow-[0_12px_32px_rgba(0,0,0,0.30)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-        style={{ bottom: "calc(88px + env(safe-area-inset-bottom))" }}
+        className="fixed z-40 right-4 w-14 h-14 rounded-2xl text-white shadow-[0_8px_24px_rgba(0,0,0,0.25),0_0_0_1px_rgba(255,255,255,0.10)_inset] bg-[linear-gradient(135deg,_oklch(0.68_0.16_38),_oklch(0.55_0.18_55))] hover:scale-105 hover:shadow-[0_12px_32px_rgba(0,0,0,0.30)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+        style={{ bottom: "calc(216px + env(safe-area-inset-bottom))" }}
       >
         <Plus className="w-6 h-6" aria-hidden="true" />
       </button>

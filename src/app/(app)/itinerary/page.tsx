@@ -41,7 +41,7 @@ function destHue(s: string): number {
 }
 
 export default function ItineraryPage() {
-  const { formatDate, formatCurrency } = useI18n();
+  const { t, formatDate, formatCurrency } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: days, loading, refetch: refetchDays } = useTripDays(trip?.id);
   const { data: reservations, refetch: refetchReservations } = useReservations(trip?.id);
@@ -381,7 +381,7 @@ export default function ItineraryPage() {
       <TripPollsSection
         tripId={trip.id}
         maxShown={3}
-        emptyHint="Sin polls. ¿Hotel A o B? ¿Cena temprano o tarde? Decidí con el grupo."
+        emptyHint={t.polls.emptyAllInactive}
       />
 
       {/* ─── AI itinerary generator sheet ─── */}

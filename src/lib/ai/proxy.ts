@@ -41,6 +41,10 @@ export interface CallAIResult {
   text: string;
   /** De dónde salió la respuesta — útil para telemetría y debugging. */
   source: "byok-anthropic" | "byok-gemini" | "proxy";
+  /** Provider real que respondió (server-side). */
+  provider?: string;
+  /** Modelo concreto (ej. "claude-haiku-4-5"). Para UI honesta. */
+  model?: string;
   /** Solo presente cuando source === "proxy". */
   usage?: { monthly: { used: number; cap: number }; daily: { used: number; cap: number } };
 }
@@ -50,6 +54,8 @@ export interface CallAIError {
   source: "none";
   /** Motivo legible para mostrar al user (es-AR). */
   reason: string;
+  /** Código machine-readable para que la UI decida (rate_limit, bad_key, unavailable, etc). */
+  code?: "rate_limit" | "bad_key" | "unavailable" | "network" | "upstream" | "empty" | "monthly_cap";
   /** Si fue 429, en cuántos segundos puede reintentar. */
   retryAfterSeconds?: number;
   /** Si fue 429, ofertamos upgrade a Pro. */
@@ -96,6 +102,7 @@ export async function callAI(opts: CallAIOpts): Promise<CallAIResult | CallAIErr
     return {
       text: null,
       source: "none",
+      code: "network",
       reason: `No pudimos contactar Tampu (${(e as Error).message || "red caída"}).`,
     };
   }
@@ -107,12 +114,22 @@ export async function callAI(opts: CallAIOpts): Promise<CallAIResult | CallAIErr
     return {
       text: null,
       source: "none",
+      code: isMonthly ? "monthly_cap" : "rate_limit",
       reason: isMonthly
         ? "Ya usaste tu cuota IA del mes. Podés sumar tu key gratis de Gemini en Settings, esperar al mes que viene, o sumarte al plan Pro."
-        : "Llegaste al límite diario. Probá de nuevo en unas horas o sumá tu key en Settings.",
+        : "Demasiadas consultas. Esperá 1 minuto o sumá tu key en Settings.",
       retryAfterSeconds: json.retryAfterSeconds,
       upgradeUrl: json.upgradeUrl || "/settings?tab=ai",
       usage: json.usage,
+    };
+  }
+
+  if (res.status === 401) {
+    return {
+      text: null,
+      source: "none",
+      code: "bad_key",
+      reason: "Tu key parece inválida. Revisala en Ajustes.",
     };
   }
 
@@ -120,8 +137,9 @@ export async function callAI(opts: CallAIOpts): Promise<CallAIResult | CallAIErr
     return {
       text: null,
       source: "none",
+      code: "unavailable",
       reason: usingByok
-        ? "El servicio está temporalmente caído. Intentá de nuevo en un rato."
+        ? "Servicio sin capacidad. Reintentá en un rato."
         : "El proxy IA de Tampu no está disponible. Sumá tu key gratis de Gemini en Settings para usar el Asistente.",
     };
   }
@@ -130,19 +148,28 @@ export async function callAI(opts: CallAIOpts): Promise<CallAIResult | CallAIErr
     return {
       text: null,
       source: "none",
+      code: "upstream",
       reason: `Error del proveedor IA (${res.status}). Intentá de nuevo.`,
     };
   }
 
-  type Ok = { text: string; source?: "proxy"; usage?: CallAIResult["usage"] };
+  type Ok = {
+    text: string;
+    source?: "proxy";
+    provider?: string;
+    model?: string;
+    usage?: CallAIResult["usage"];
+  };
   const json = (await res.json().catch(() => null)) as Ok | null;
   if (!json || !json.text) {
-    return { text: null, source: "none", reason: "Respuesta vacía del proveedor IA." };
+    return { text: null, source: "none", code: "empty", reason: "Respuesta vacía del proveedor IA." };
   }
 
   return {
     text: json.text,
     source: usingByok ? (headers as Record<string, string>)["x-anthropic-key"] ? "byok-anthropic" : "byok-gemini" : "proxy",
+    provider: json.provider,
+    model: json.model,
     usage: json.usage,
   };
 }

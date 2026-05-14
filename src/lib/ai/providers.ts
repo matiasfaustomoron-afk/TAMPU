@@ -14,6 +14,27 @@ export interface LLMCallOpts {
   image?: { dataB64: string; mime: string };
   pdf?: { dataB64: string };
   timeoutMs?: number;
+  /**
+   * Modelo lógico — el provider lo resuelve al concrete model ID.
+   * - 'haiku' (default): claude-haiku-4-5 / gemini-2.0-flash. Para clasificación, parsing single-shot.
+   * - 'sonnet': claude-sonnet-4-5. Para reasoning más pesado (agentic, vision).
+   * Gemini ignora este flag — siempre usa 2.0 Flash.
+   */
+  model?: "haiku" | "sonnet";
+}
+
+/**
+ * Resultado opcional rich del callLLM — incluye usage real reportado por el
+ * provider, el modelo concreto que respondió, y el texto. Los callers existentes
+ * pueden seguir consumiendo solo `text` via `callLLM()` legacy.
+ */
+export interface LLMCallResult {
+  text: string;
+  /** Token counts reales del provider (input/output). Cero si el provider no los reporta. */
+  usage: { inputTokens: number; outputTokens: number };
+  /** Modelo concreto usado (ej. 'claude-haiku-4-5' o 'gemini-2.0-flash'). */
+  model: string;
+  provider: "anthropic" | "gemini";
 }
 
 export interface SelectProviderOpts {
@@ -70,13 +91,58 @@ export function selectProvider(
 
 /** Call the selected provider and return the raw text response. Null on failure. */
 export async function callLLM(provider: Provider, key: string, opts: LLMCallOpts): Promise<string | null> {
+  const rich = await callLLMRich(provider, key, opts);
+  return rich ? rich.text : null;
+}
+
+/**
+ * Versión rich de callLLM — devuelve text + usage real + modelo. Preferí usar
+ * esta en endpoints nuevos para que rate-limit / cost tracking tengan los
+ * números reales del provider en vez del worst-case (MAX_TOKENS hardcoded).
+ */
+export async function callLLMRich(
+  provider: Provider,
+  key: string,
+  opts: LLMCallOpts,
+): Promise<LLMCallResult | null> {
   if (!provider || !key) return null;
-  if (provider === "anthropic") return callAnthropic(key, opts);
-  if (provider === "gemini") return callGemini(key, opts);
+  if (provider === "anthropic") {
+    const r = await withRetry(() => callAnthropicRich(key, opts));
+    return r;
+  }
+  if (provider === "gemini") {
+    const r = await withRetry(() => callGeminiRich(key, opts));
+    return r;
+  }
   return null;
 }
 
-async function callAnthropic(key: string, opts: LLMCallOpts): Promise<string | null> {
+/**
+ * Retry exponential backoff para llamadas LLM transient errors.
+ * - Reintenta hasta 2 veces (3 attempts total) con backoff 1s, 2s, 4s.
+ * - 401 NO se reintenta (es un error de auth, no transient).
+ * - Honra `retry-after` header si el upstream lo manda.
+ */
+async function withRetry<T>(fn: () => Promise<T | null>, retries = 2): Promise<T | null> {
+  let lastErr: unknown = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fn();
+      // Si fn devolvió null limpio, NO reintentamos (no es un error, es un "no data")
+      // — fn ya distingue internamente entre 401 (no retry) y 429/5xx (retry).
+      if (res !== null || i === retries) return res;
+    } catch (e: unknown) {
+      lastErr = e;
+      if (i === retries) throw e;
+    }
+    const waitMs = 1000 * Math.pow(2, i);
+    await new Promise(r => setTimeout(r, waitMs));
+  }
+  if (lastErr) throw lastErr;
+  return null;
+}
+
+async function callAnthropicRich(key: string, opts: LLMCallOpts): Promise<LLMCallResult | null> {
   try {
     const content: Array<Record<string, unknown>> = [];
     if (opts.image) {
@@ -87,6 +153,8 @@ async function callAnthropic(key: string, opts: LLMCallOpts): Promise<string | n
     }
     content.push({ type: "text", text: opts.userMessage });
 
+    const model = opts.model === "sonnet" ? "claude-sonnet-4-5" : "claude-haiku-4-5";
+
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       signal: AbortSignal.timeout(opts.timeoutMs ?? 25_000),
@@ -96,20 +164,50 @@ async function callAnthropic(key: string, opts: LLMCallOpts): Promise<string | n
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model,
         max_tokens: opts.maxTokens ?? 1024,
-        ...(opts.system ? { system: opts.system } : {}),
+        // Prompt caching: el system prompt se cachea con TTL ephemeral (5 min).
+        // En las llamadas siguientes con el mismo system, Anthropic descuenta
+        // ~90% del cost de input tokens. Estructura: array de blocks con
+        // cache_control en el último (o único) block.
+        ...(opts.system
+          ? { system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }] }
+          : {}),
         messages: [{ role: "user", content }],
       }),
     });
-    if (!res.ok) return null;
-    const json = await res.json() as { content?: Array<{ type: string; text?: string }> };
+    if (!res.ok) {
+      // 401 → error de auth, no retryable. Lo señalizamos throwando.
+      if (res.status === 401) {
+        const err = new Error(`anthropic_unauthorized`) as Error & { status?: number };
+        err.status = 401;
+        throw err;
+      }
+      return null;
+    }
+    const json = await res.json() as {
+      content?: Array<{ type: string; text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
     const txt = json.content?.find(c => c.type === "text")?.text;
-    return txt || null;
-  } catch { return null; }
+    if (!txt) return null;
+    return {
+      text: txt,
+      usage: {
+        inputTokens: json.usage?.input_tokens ?? 0,
+        outputTokens: json.usage?.output_tokens ?? 0,
+      },
+      model,
+      provider: "anthropic",
+    };
+  } catch (e: unknown) {
+    // Re-throw 401 para que withRetry no reintente
+    if ((e as { status?: number })?.status === 401) throw e;
+    return null;
+  }
 }
 
-async function callGemini(key: string, opts: LLMCallOpts): Promise<string | null> {
+async function callGeminiRich(key: string, opts: LLMCallOpts): Promise<LLMCallResult | null> {
   try {
     const parts: Array<Record<string, unknown>> = [];
     if (opts.system) parts.push({ text: `[SYSTEM] ${opts.system}\n\n` });
@@ -121,7 +219,8 @@ async function callGemini(key: string, opts: LLMCallOpts): Promise<string | null
     }
     parts.push({ text: opts.userMessage });
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+    const model = "gemini-2.0-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
     const res = await fetch(url, {
       method: "POST",
       signal: AbortSignal.timeout(opts.timeoutMs ?? 25_000),
@@ -134,11 +233,31 @@ async function callGemini(key: string, opts: LLMCallOpts): Promise<string | null
         },
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        const err = new Error(`gemini_unauthorized`) as Error & { status?: number };
+        err.status = 401;
+        throw err;
+      }
+      return null;
+    }
     const json = await res.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
     };
     const txt = json.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("");
-    return txt || null;
-  } catch { return null; }
+    if (!txt) return null;
+    return {
+      text: txt,
+      usage: {
+        inputTokens: json.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+      },
+      model,
+      provider: "gemini",
+    };
+  } catch (e: unknown) {
+    if ((e as { status?: number })?.status === 401) throw e;
+    return null;
+  }
 }

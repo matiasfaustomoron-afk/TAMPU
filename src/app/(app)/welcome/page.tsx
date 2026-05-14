@@ -87,11 +87,13 @@ export default function WelcomePage() {
           {t.welcome.eyebrow}
         </p>
 
-        {/* Hero — serif huge, sin destino hardcodeado */}
-        <h1 className="font-serif text-[52px] sm:text-[68px] leading-[0.94] text-foreground tracking-tight">
+        {/* Hero — serif huge, sin destino hardcodeado.
+            text-balance reparte el wrap evitando viuda (1 palabra suelta en
+            última línea). Chrome 114+ / Safari 17.4+ / Firefox 121+. */}
+        <h1 className="font-serif text-[52px] sm:text-[68px] leading-[0.94] text-foreground tracking-tight text-balance">
           {t.welcome.title}
         </h1>
-        <h2 className="font-serif italic text-[40px] sm:text-[52px] leading-[0.98] text-primary mt-2">
+        <h2 className="font-serif italic text-[40px] sm:text-[52px] leading-[0.98] text-primary mt-2 text-balance">
           {t.welcome.titleItalic}
         </h2>
 

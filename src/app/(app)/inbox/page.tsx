@@ -32,7 +32,7 @@ import type { ReservationType, ReservationStatus, Criticality } from "@/lib/type
 export default function InboxPage() {
   const { data: trip } = useActiveTrip();
   const { mode, client } = useSupabase();
-  const { formatDate } = useI18n();
+  const { t, formatDate } = useI18n();
   const { addReservation } = useMutations();
 
   const [entries, setEntries] = useState<EmailInEntry[]>([]);
@@ -71,7 +71,7 @@ export default function InboxPage() {
     try {
       await navigator.clipboard.writeText(address);
       haptic("light");
-      toast("Address copiada al portapapeles", "success");
+      toast(t.inbox.copied, "success");
     } catch {
       toast("No se pudo copiar", "warn");
     }
@@ -141,7 +141,7 @@ export default function InboxPage() {
   if (!trip) {
     return (
       <div className="animate-fade-in">
-        <LargeTitle title="Bandeja" serif />
+        <LargeTitle title={t.inbox.title} serif />
         <EmptyState title="Sin viaje activo" icon={<Inbox className="w-8 h-8" />} />
       </div>
     );
@@ -152,7 +152,7 @@ export default function InboxPage() {
 
   return (
     <div className="animate-fade-in">
-      <LargeTitle eyebrow={trip.name} title="Bandeja" serif />
+      <LargeTitle eyebrow={trip.name} title={t.inbox.title} serif />
 
       {/* Address card */}
       <div className="px-4">
@@ -163,7 +163,7 @@ export default function InboxPage() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold tracking-[0.16em] uppercase text-muted-foreground mb-1">
-                Forwardeá emails a
+                Reenviá emails a
               </p>
               <p className="font-mono text-[14.5px] font-semibold break-all leading-tight">
                 {address}
@@ -193,14 +193,14 @@ export default function InboxPage() {
       {loading ? (
         <div className="px-4 mt-8">
           <div className="flex items-center gap-2 text-muted-foreground text-[13px]">
-            <Loader2 className="w-4 h-4 animate-spin" /> Cargando bandeja…
+            <Loader2 className="w-4 h-4 animate-spin" /> {t.common.loading}
           </div>
         </div>
       ) : active.length === 0 && archived.length === 0 ? (
         <div className="mt-8">
           <EmptyState
             title="Bandeja vacía"
-            description="Mandá tu primer email al alias de arriba"
+            description={t.inbox.emptyState}
             icon={<Inbox className="w-8 h-8" />}
           />
         </div>
@@ -317,8 +317,8 @@ function EntryRow({
 
 function StatusPill({ status, count }: { status: EmailInEntry["status"]; count: number }) {
   if (status === "parsed") return <Pill tone="ok">{count}</Pill>;
-  if (status === "committed") return <Pill tone="primary"><Sparkles className="w-2.5 h-2.5 inline mr-0.5" /> imp</Pill>;
-  if (status === "failed") return <Pill tone="warn">fail</Pill>;
-  if (status === "dismissed") return <Pill tone="neutral">desc</Pill>;
-  return <Pill tone="neutral">pend</Pill>;
+  if (status === "committed") return <Pill tone="primary"><Sparkles className="w-2.5 h-2.5 inline mr-0.5" /> Importado</Pill>;
+  if (status === "failed") return <Pill tone="warn">Falló</Pill>;
+  if (status === "dismissed") return <Pill tone="neutral">Descartado</Pill>;
+  return <Pill tone="neutral">Pendiente</Pill>;
 }

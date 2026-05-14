@@ -8,7 +8,7 @@
 // Si no hay key → 503 (cliente cae a manual select).
 
 import { NextResponse, type NextRequest } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { BUDGET_CATEGORIES } from "@/lib/config/constants";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { captureException } from "@/lib/observability/sentry";
@@ -72,44 +72,67 @@ export async function POST(req: NextRequest) {
     "Devolvé el JSON con la categoría:",
   ].filter(Boolean).join("\n");
 
-  const raw = await callLLM(provider, key, {
+  const rich = await callLLMRich(provider, key, {
     system: SYSTEM_PROMPT,
     userMessage,
     maxTokens: MAX_TOKENS_HARD,
     timeoutMs: 10_000,
+    model: "haiku",
   });
 
-  if (!raw) {
+  if (!rich) {
     return NextResponse.json({ error: "llm_failed" }, { status: 502 });
   }
 
-  // Log usage para analytics + circuit breaker
-  const tokensIn = Math.ceil((userMessage.length + SYSTEM_PROMPT.length) / 4);
-  const tokensOut = MAX_TOKENS_HARD;
+  // Log usage REAL del provider + modelo concreto.
+  const tokensIn = rich.usage.inputTokens;
+  const tokensOut = rich.usage.outputTokens;
   void recordProxyCall(source === "byok" ? "byok:categorize" : "fallback:categorize", {
     endpoint: "/api/categorize-expense",
     tokensIn,
     tokensOut,
-    costUsd: estimateCostUsd(tokensIn, tokensOut, "haiku"),
+    costUsd: estimateCostUsd(tokensIn, tokensOut, rich.model),
+    provider: rich.provider,
+    model: rich.model,
   }).catch((e) => captureException(e, { tag: "categorize-expense.record" }));
 
   // Extract JSON (modelo puede envolver en markdown ```json ... ```)
-  const match = raw.match(/\{[\s\S]*\}/);
+  const match = rich.text.match(/\{[\s\S]*\}/);
   if (!match) {
-    return NextResponse.json({ error: "no_json_in_response", raw }, { status: 502 });
+    return NextResponse.json({
+      error: "no_json_in_response",
+      raw: rich.text,
+      degraded: true,
+      reason: "json_parse_failed",
+      provider: rich.provider,
+      model: rich.model,
+    }, { status: 502 });
   }
 
   let parsed: CategorizationResult;
   try {
     parsed = JSON.parse(match[0]) as CategorizationResult;
   } catch {
-    return NextResponse.json({ error: "json_parse_failed", raw: match[0] }, { status: 502 });
+    return NextResponse.json({
+      error: "json_parse_failed",
+      raw: match[0],
+      degraded: true,
+      reason: "json_parse_failed",
+      provider: rich.provider,
+      model: rich.model,
+    }, { status: 502 });
   }
 
   // Validate category against whitelist (modelo a veces inventa)
   if (!CATEGORY_VALUES.includes(parsed.category)) {
     return NextResponse.json(
-      { category: "other", confidence: "low", reasoning: "Categoría no reconocida; fallback a 'other'." },
+      {
+        category: "other",
+        confidence: "low",
+        reasoning: "Categoría no reconocida; fallback a 'other'.",
+        provider: rich.provider,
+        model: rich.model,
+      },
       { status: 200 }
     );
   }
@@ -118,5 +141,7 @@ export async function POST(req: NextRequest) {
     category: parsed.category,
     confidence: parsed.confidence || "medium",
     reasoning: parsed.reasoning,
+    provider: rich.provider,
+    model: rich.model,
   }, { status: 200 });
 }

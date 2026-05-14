@@ -12,6 +12,7 @@ import {
   ShieldAlert, Bell,
   Inbox, Settings, User,
   Globe, Camera, Vote, Clock,
+  MessageCircle, Mail, Lock,
 } from "lucide-react";
 
 export default function MorePage() {
@@ -92,6 +93,17 @@ export default function MorePage() {
           title="SOS" subtitle="Emergencia por país" href="/emergency" chevron />
         <IOSRow icon={<Bell className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-mostaza"
           title="Alertas" subtitle="Activas hoy" href="/alerts" chevron />
+      </IOSSection>
+
+      {/* Ingest channels — accesos directos a las páginas que antes vivían
+          ocultas detrás de /settings. Útil para deep-link y descubrimiento. */}
+      <IOSSection eyebrow="Canales de ingesta">
+        <IOSRow icon={<MessageCircle className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-cobre"
+          title="WhatsApp" subtitle="Mensajes parseados · vincular número" href="/whatsapp" chevron />
+        <IOSRow icon={<Mail className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-mostaza"
+          title="Inbox" subtitle="Reenviá emails a Tampu" href="/inbox" chevron />
+        <IOSRow icon={<Lock className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-piedra"
+          title="Passcode" subtitle="Cifrado at-rest del Vault" href="/passcode" chevron />
       </IOSSection>
 
       {/* "Panel completo" (/dashboard) y "Resumen imprimible" (/book) fueron eliminados

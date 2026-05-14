@@ -3,20 +3,23 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils/helpers";
 
-// Solid HEX colors for the donut slices
+// Colors via CSS HSL tokens — overridable via brand custom property
+// (--color-chart-* en globals.css). Each value is `hsl(var(--token))` so
+// recharts recibe un color string válido. Originalmente eran hex hardcoded
+// genérica Tailwind (palette agnostic); ahora son tokens Tampu auditables.
 const CATEGORY_HEX: Record<string, string> = {
-  food: "#fb923c",
-  transport: "#3b82f6",
-  accommodation: "#10b981",
-  activities: "#a855f7",
-  shopping: "#ec4899",
-  insurance: "#06b6d4",
-  flights: "#0ea5e9",
-  visas: "#f59e0b",
-  health: "#ef4444",
-  connectivity: "#6366f1",
-  other: "#71717a",
-  contingency: "#a1a1aa",
+  food: "hsl(var(--color-chart-food))",
+  transport: "hsl(var(--color-chart-transport))",
+  accommodation: "hsl(var(--color-chart-accommodation))",
+  activities: "hsl(var(--color-chart-activities))",
+  shopping: "hsl(var(--color-chart-shopping))",
+  insurance: "hsl(var(--color-chart-insurance))",
+  flights: "hsl(var(--color-chart-flights))",
+  visas: "hsl(var(--color-chart-visas))",
+  health: "hsl(var(--color-chart-health))",
+  connectivity: "hsl(var(--color-chart-connectivity))",
+  other: "hsl(var(--color-chart-other))",
+  contingency: "hsl(var(--color-chart-contingency))",
 };
 
 export function CategoryDonut({
@@ -35,7 +38,7 @@ export function CategoryDonut({
       category,
       value,
       label: categoriesLabel[category] || category,
-      color: CATEGORY_HEX[category] || "#71717a",
+      color: CATEGORY_HEX[category] || "hsl(var(--color-chart-other))",
     }))
     .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);

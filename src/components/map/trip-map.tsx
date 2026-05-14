@@ -94,9 +94,13 @@ export default function TripMap({ cities, reservations: _reservations, tripDays,
           url={tile.url}
         />
         <FitBounds points={points} />
-        <Polyline positions={points} pathOptions={{ color: "#10b981", weight: 2, opacity: 0.7, dashArray: "5,5" }} />
+        {/* Polyline colors — los hex acá DEBEN matchear los tokens HSL en
+            globals.css (--color-chart-route, --color-chart-track). Leaflet SVG
+            attrs no resuelven `var()`, así que mantenemos hex; si cambiás
+            los tokens, sync acá manualmente. */}
+        <Polyline positions={points} pathOptions={{ color: "#10b981" /* --color-chart-route */, weight: 2, opacity: 0.7, dashArray: "5,5" }} />
         {trackPath.length > 1 && (
-          <Polyline positions={trackPath} pathOptions={{ color: "#3b82f6", weight: 3, opacity: 0.6 }} />
+          <Polyline positions={trackPath} pathOptions={{ color: "#3b82f6" /* --color-chart-track */, weight: 3, opacity: 0.6 }} />
         )}
         {pois.map((p, i) => {
           const meta = POI_CATEGORY_LABELS[p.category];
@@ -128,7 +132,7 @@ export default function TripMap({ cities, reservations: _reservations, tripDays,
                 {p.departure && <p>Salida: {p.departure}</p>}
                 <p>
                   Cobertura:{" "}
-                  <span style={{ color: p.coverage === "covered" ? "#10b981" : p.coverage === "partial" ? "#f59e0b" : "#ef4444" }}>
+                  <span style={{ color: p.coverage === "covered" ? "hsl(var(--color-chart-accommodation))" : p.coverage === "partial" ? "hsl(var(--color-chart-warning))" : "hsl(var(--color-chart-danger))" }}>
                     {p.coverage === "covered" ? "OK" : p.coverage === "partial" ? "parcial" : "sin cubrir"}
                   </span>
                 </p>

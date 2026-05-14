@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { reportError, describeError } from "@/lib/utils/errors";
+import { useI18n } from "@/i18n/provider";
 
 interface WhatsAppMessageRow {
   id: string;
@@ -127,6 +128,7 @@ function summarizeParsed(parsedJson: WhatsAppMessageRow["parsed_json"]): string 
 }
 
 export default function WhatsAppInboxPage() {
+  const { t } = useI18n();
   const [link, setLink] = useState<StatusResponse | null>(null);
   const [messages, setMessages] = useState<WhatsAppMessageRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,7 +236,7 @@ export default function WhatsAppInboxPage() {
   if (loading && !link) {
     return (
       <div className="space-y-6 pb-20 lg:pb-0">
-        <SectionHeader title="WhatsApp" subtitle="Cargando…" />
+        <SectionHeader title="WhatsApp" subtitle={t.common.loading} />
         <div className="flex justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>

@@ -15,7 +15,7 @@ import { useAllTrips, useMutations, useActiveTrip } from "@/lib/hooks/use-trip-d
 import { useI18n } from "@/i18n/provider";
 import { daysUntil, daysBetween } from "@/lib/utils/helpers";
 import { CURRENCIES } from "@/lib/config/constants";
-import { Globe, Calendar, Plus, Trash2, ChevronLeft, ChevronRight, Sparkles, Mail, Activity as ActivityIcon } from "lucide-react";
+import { Globe, Calendar, Plus, Trash2, ChevronLeft, ChevronRight, Sparkles, Mail, Activity as ActivityIcon, Pencil } from "lucide-react";
 import { TripInboxAddressModal } from "@/components/trips/trip-inbox-address-modal";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -259,6 +259,14 @@ export default function TripsPage() {
                     >
                       <Mail className="w-4 h-4" />
                     </button>
+                    <Link
+                      href={`/trips/${trip.id}/edit`}
+                      className="text-white/80 hover:text-white hover:bg-white/15 transition-colors flex items-center gap-1 p-2 rounded-lg"
+                      aria-label="Editar viaje"
+                      title="Editar nombre, fechas, presupuesto"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Link>
                     <button
                       onClick={() => handleDelete(trip.id, trip.name)}
                       className="text-white/70 hover:text-white hover:bg-destructive/30 transition-colors flex items-center gap-1 p-2 rounded-lg"

@@ -1,5 +1,7 @@
 "use client";
 
+import { describeError } from "@/lib/utils/errors";
+
 /**
  * Tampu — Sync status tracking.
  *
@@ -31,19 +33,8 @@ export function recordSyncSuccess(): void {
 
 export function recordSyncError(err: unknown): void {
   if (typeof window === "undefined") return;
-  // Supabase errors son plain objects, no Error instances. String({...}) = "[object Object]".
-  // Usamos el mismo unwrapping helper que toda la app, sin imports (para no romper SSR si
-  // alguien lo importa desde server).
-  const obj = (typeof err === "object" && err !== null) ? (err as Record<string, unknown>) : null;
-  const message = obj && typeof obj.message === "string" && obj.message
-    ? obj.message
-    : obj && typeof obj.details === "string" && obj.details
-      ? obj.details
-      : err instanceof Error
-        ? err.message
-        : typeof err === "string"
-          ? err
-          : "Error desconocido";
+  // Unwrap consistente con el resto de la app (Supabase errors son plain objects).
+  const { message } = describeError(err);
   window.dispatchEvent(
     new CustomEvent("tampu-sync-error", {
       detail: { at: new Date().toISOString(), message },

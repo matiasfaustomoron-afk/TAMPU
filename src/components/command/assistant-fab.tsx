@@ -16,6 +16,17 @@ import { haptic } from "@/lib/native/platform";
  *  - /assistant (la propia ruta del asistente — sería redundante)
  *  - /welcome y /login (pre-onboarding, sin trip activo)
  *  - /onboarding (sin trip aún)
+ *
+ * ─── FAB stacking documentado ───
+ * Tab bar = 64px de alto + safe-area-inset-bottom.
+ * Reglas iOS HIG: no solapar con tab bar, dejar 24px de gap.
+ *
+ *   AssistantFab  bottom = safe-area + 88px   (24px arriba del top del tab-bar) → abajo
+ *   MoreFab       bottom = safe-area + 152px  (88 + 56 alto FAB + 8 gap)        → medio
+ *   ExpenseFab    bottom = safe-area + 216px  (152 + 56 alto FAB + 8 gap)       → arriba
+ *
+ * En iPhone SE (max-height: 700px) escondemos MoreFab para evitar overlap con
+ * el viewport más chico — el user puede tocar tab "Más" / link directo a /more.
  */
 const HIDDEN_ROUTES = ["/assistant", "/welcome", "/login", "/onboarding"];
 

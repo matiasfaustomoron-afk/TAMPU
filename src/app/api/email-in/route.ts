@@ -180,6 +180,37 @@ interface LLMParseResponse {
   carrier_hint?: string | null;
 }
 
+/**
+ * Chequea el cap diario de email-in por usuario. Cap de 50 emails/día —
+ * protege contra forwards masivos accidentales (ej. un script que reenvía
+ * la inbox entera) y contra abuse intencional. Devuelve `{ ok: false }` si
+ * el cap se superó, con un `count` para que el caller pueda logear.
+ *
+ * Si Supabase está mal configurado o la query falla, devolvemos `ok: true`
+ * (fail-open) — preferimos aceptar el email a perderlo por un error transit.
+ */
+async function checkEmailInRateLimit(
+  svc: ReturnType<typeof createSupabaseService>,
+  userId: string,
+): Promise<{ ok: boolean; count: number }> {
+  if (!svc) return { ok: true, count: 0 };
+  const dayStart = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").toISOString();
+  try {
+    const { count, error } = await svc
+      .from("email_in_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", dayStart);
+    if (error) return { ok: true, count: 0 };
+    const n = count ?? 0;
+    return { ok: n < EMAIL_IN_DAILY_CAP_PER_USER, count: n };
+  } catch {
+    return { ok: true, count: 0 };
+  }
+}
+
+const EMAIL_IN_DAILY_CAP_PER_USER = 50;
+
 function safeParseLLM(raw: string): LLMParseResponse | null {
   try {
     let txt = raw.trim();
@@ -273,6 +304,16 @@ async function handleSimpleJSON(
       .limit(2);
     if (trips && trips.length === 1) {
       const trip = trips[0];
+      // Rate-limit antes del insert: máximo 50 emails/día/user.
+      const rl = await checkEmailInRateLimit(svc, trip.user_id);
+      if (!rl.ok) {
+        return withCors(NextResponse.json({
+          ok: false,
+          error: "Rate limit reached (50 emails/day for this trip's owner)",
+          short_id: shortId,
+          count_today: rl.count,
+        }, { status: 429 }), origin);
+      }
       await svc.from("email_in_entries").insert({
         trip_id: trip.id,
         user_id: trip.user_id,
@@ -454,6 +495,18 @@ async function commonWebhookFinalize(email: NormalizedEmail | null, origin: stri
   const parsed = heuristicMultiParse(email.bodyText);
   const fromAddr = extractAddressFromHeader(email.from);
   const fromName = extractDisplayName(email.from);
+
+  // Rate-limit antes del insert: máximo 50 emails/día/user. Si lo superó,
+  // devolvemos 429 y NO insertamos — Mailgun/SES van a reintentar y el
+  // operador ve el rebote en logs (no perdemos visibility silenciosa).
+  const rl = await checkEmailInRateLimit(svc, trip.user_id);
+  if (!rl.ok) {
+    return withCors(NextResponse.json({
+      error: "Rate limit reached (50 emails/day for this user)",
+      short_id: shortId,
+      count_today: rl.count,
+    }, { status: 429 }), origin);
+  }
 
   const { data: inserted, error: insertErr } = await svc
     .from("email_in_entries")

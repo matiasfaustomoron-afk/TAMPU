@@ -379,3 +379,192 @@ export async function syncPollToSupabase(
     return null;
   }
 }
+
+// ─── Online-mode CRUD (migration 00032) ────────────────────────────────────
+//
+// Cuando el caller tiene un SupabaseClient (mode === "online"), usa estas
+// funciones para leer/escribir contra la tabla `polls`. Mantenemos los
+// helpers locales (getLocalPolls, voteLocalPoll, etc.) intactos para el
+// demo mode.
+//
+// Shape de la row en Supabase coincide con el shape Poll del cliente, así
+// que el adapter es identidad — excepto por `closed_at` (timestamptz en DB)
+// vs `closed` (boolean en el client). Mapeamos en cada dirección.
+
+interface DbPollRow {
+  id: string;
+  trip_id: string;
+  question: string;
+  options: PollOption[];
+  votes: Record<string, string>;
+  voter_names: Record<string, string> | null;
+  deadline: string | null;
+  closed_at: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+function dbRowToPoll(row: DbPollRow, createdByName?: string): Poll {
+  return {
+    id: row.id,
+    trip_id: row.trip_id,
+    question: row.question,
+    options: row.options,
+    deadline: row.deadline,
+    votes: row.votes ?? {},
+    voter_names: row.voter_names ?? {},
+    created_by: row.created_by,
+    created_by_name: createdByName ?? row.created_by.slice(0, 8),
+    created_at: row.created_at,
+    closed: !!row.closed_at,
+  };
+}
+
+/**
+ * Lista polls del trip desde Supabase. Si la tabla no existe (42P01) o falla,
+ * devuelve `null` para que el caller pueda fallback a localStorage.
+ */
+export async function listPollsOnline(
+  client: SupabaseClient,
+  tripId: string
+): Promise<Poll[] | null> {
+  try {
+    const { data, error } = await client
+      .from("polls")
+      .select("*")
+      .eq("trip_id", tripId)
+      .order("created_at", { ascending: false });
+    if (error) {
+      if (error.code === "42P01") return null;
+      console.warn("[polls] listPollsOnline failed", error.code, error.message);
+      return null;
+    }
+    return (data as DbPollRow[]).map((r) => dbRowToPoll(r));
+  } catch (err) {
+    console.warn("[polls] listPollsOnline threw", err);
+    return null;
+  }
+}
+
+/**
+ * Crea un poll en Supabase. El creator se rellena server-side vía default
+ * `auth.uid()`, pero igual lo pasamos en el insert para consistencia.
+ */
+export async function createPollOnline(
+  client: SupabaseClient,
+  input: CreatePollInput
+): Promise<Poll | null> {
+  const validation = validateCreateInput(input);
+  if (validation) return null;
+  const options = input.options.map((o, i) => ({
+    id: String.fromCharCode(65 + i),
+    label: o.label,
+    description: o.description,
+  }));
+  try {
+    const { data, error } = await client
+      .from("polls")
+      .insert({
+        trip_id: input.tripId,
+        question: input.question,
+        options,
+        deadline: input.deadline,
+        votes: {},
+        voter_names: {},
+        created_by: input.userId,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.warn("[polls] createPollOnline failed", error.code, error.message);
+      return null;
+    }
+    return dbRowToPoll(data as DbPollRow, input.displayName);
+  } catch (err) {
+    console.warn("[polls] createPollOnline threw", err);
+    return null;
+  }
+}
+
+/**
+ * Vota o cambia voto en Supabase. Lee → muta map → escribe. Si dos clients
+ * votan al mismo tiempo hay un last-write-wins, aceptable para polls.
+ */
+export async function castVoteOnline(
+  client: SupabaseClient,
+  pollId: string,
+  optionId: string,
+  user: { id: string; displayName: string }
+): Promise<Poll | null> {
+  try {
+    // Read current row (necesitamos votes + voter_names para hacer merge).
+    const { data: existing, error: readErr } = await client
+      .from("polls")
+      .select("*")
+      .eq("id", pollId)
+      .maybeSingle();
+    if (readErr || !existing) {
+      console.warn("[polls] castVoteOnline read failed", readErr?.message);
+      return null;
+    }
+    const row = existing as DbPollRow;
+    const nextVotes = { ...(row.votes ?? {}), [user.id]: optionId };
+    const nextVoterNames = { ...(row.voter_names ?? {}), [user.id]: user.displayName };
+
+    const { data: updated, error: updErr } = await client
+      .from("polls")
+      .update({ votes: nextVotes, voter_names: nextVoterNames })
+      .eq("id", pollId)
+      .select()
+      .single();
+    if (updErr) {
+      console.warn("[polls] castVoteOnline update failed", updErr.code, updErr.message);
+      return null;
+    }
+    return dbRowToPoll(updated as DbPollRow);
+  } catch (err) {
+    console.warn("[polls] castVoteOnline threw", err);
+    return null;
+  }
+}
+
+/** Cierra un poll seteando `closed_at = now()`. */
+export async function closePollOnline(
+  client: SupabaseClient,
+  pollId: string
+): Promise<Poll | null> {
+  try {
+    const { data, error } = await client
+      .from("polls")
+      .update({ closed_at: new Date().toISOString() })
+      .eq("id", pollId)
+      .select()
+      .single();
+    if (error) {
+      console.warn("[polls] closePollOnline failed", error.code, error.message);
+      return null;
+    }
+    return dbRowToPoll(data as DbPollRow);
+  } catch (err) {
+    console.warn("[polls] closePollOnline threw", err);
+    return null;
+  }
+}
+
+/** Borra un poll (solo el creator vía RLS). */
+export async function deletePollOnline(
+  client: SupabaseClient,
+  pollId: string
+): Promise<boolean> {
+  try {
+    const { error } = await client.from("polls").delete().eq("id", pollId);
+    if (error) {
+      console.warn("[polls] deletePollOnline failed", error.code, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[polls] deletePollOnline threw", err);
+    return false;
+  }
+}

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
+import { maskPII } from "@/lib/ai/pii-filter";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
 
 // ─── Document classifier + OCR ───
 // Receives a base64-encoded image OR PDF, asks Claude (vision) to classify it
@@ -51,7 +54,7 @@ interface ClassifyResult {
   source: "claude" | "heuristic-filename";
 }
 
-const SYSTEM = `Eres un clasificador de documentos de viaje. Recibís UNA imagen o PDF (probablemente foto de un boarding pass, pasaporte, póliza de seguro, recibo, reserva de hotel, certificado de vacuna, ticket de tren).
+const SYSTEM = `Sos un clasificador argentino de documentos de viaje. Recibís UNA imagen o PDF (probablemente foto de un boarding pass, pasaporte, póliza de seguro, recibo, reserva de hotel, certificado de vacuna, ticket de tren).
 
 Devolvé JSON estricto con:
 {
@@ -103,23 +106,59 @@ function heuristicFallback(fileName: string | undefined): ClassifyResult {
   };
 }
 
-async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<ClassifyResult | null> {
-  const { provider, key } = selectProvider(req);
+interface ClassifyLLMResponse {
+  result: ClassifyResult | null;
+  degraded?: { reason: "json_parse_failed" };
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  source: "byok" | "tampu" | "env" | "none";
+}
+
+async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<ClassifyLLMResponse | null> {
+  // P1.12 — classify-document es el único endpoint server-side que usa visión
+  // y typically corre sin BYOK (el user no quiere configurar key sólo para
+  // clasificar un boarding). Habilitamos fallback al proxy de Tampu acá.
+  const { provider, key, source } = selectProvider(req, { allowTampuFallback: true });
   if (!provider || !key) return null;
   try {
     const isPdf = body.mime === "application/pdf";
-    const raw = await callLLM(provider, key, {
+    // PII mask en el filename hint (puede traer DNI/CUIT en el nombre del archivo).
+    const safeFilename = maskPII(body.file_name || "desconocido");
+    const rich = await callLLMRich(provider, key, {
       system: SYSTEM,
-      userMessage: `Clasificá este documento. Filename: ${body.file_name || "desconocido"}`,
+      userMessage: `Clasificá este documento. Filename: ${safeFilename}`,
       image: isPdf ? undefined : { dataB64: body.data_base64, mime: body.mime || "image/jpeg" },
       pdf: isPdf ? { dataB64: body.data_base64 } : undefined,
       maxTokens: 1024,
       timeoutMs: 40_000,
+      // Sonnet para vision — Haiku no soporta vision multimodal igual de bien.
+      model: "sonnet",
     });
-    if (!raw) return null;
-    const clean = raw.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    const parsed = JSON.parse(clean) as Omit<ClassifyResult, "source">;
-    return { ...parsed, source: "claude" };
+    if (!rich) return null;
+    try {
+      const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
+      const parsed = JSON.parse(clean) as Omit<ClassifyResult, "source">;
+      return {
+        result: { ...parsed, source: "claude" },
+        provider: rich.provider,
+        model: rich.model,
+        inputTokens: rich.usage.inputTokens,
+        outputTokens: rich.usage.outputTokens,
+        source,
+      };
+    } catch {
+      return {
+        result: null,
+        degraded: { reason: "json_parse_failed" },
+        provider: rich.provider,
+        model: rich.model,
+        inputTokens: rich.usage.inputTokens,
+        outputTokens: rich.usage.outputTokens,
+        source,
+      };
+    }
   } catch (e) {
     console.error("[classify] LLM failed:", e);
     return null;
@@ -135,7 +174,45 @@ export async function POST(req: NextRequest) {
   if (body.data_base64.length > 8_000_000) {
     return withCors(NextResponse.json({ error: "File too large for IA classification (max ~6 MB)." }, { status: 413 }), origin);
   }
-  const r = await llmClassify(req, body);
-  if (r) return withCors(NextResponse.json(r), origin);
+  const envelope = await llmClassify(req, body);
+  if (envelope) {
+    // Record real usage para budget / circuit breaker, ya sea hit o degraded.
+    const identifier =
+      envelope.source === "byok" ? "byok:classify"
+      : envelope.source === "tampu" ? "tampu:classify"
+      : "fallback:classify";
+    const costUsd = estimateCostUsd(envelope.inputTokens, envelope.outputTokens, envelope.model);
+    void recordProxyCall(identifier, {
+      endpoint: "/api/classify-document",
+      tokensIn: envelope.inputTokens,
+      tokensOut: envelope.outputTokens,
+      costUsd,
+      provider: envelope.provider === "anthropic" || envelope.provider === "gemini" ? envelope.provider : "tampu",
+      model: envelope.model,
+    }).catch((e) => captureException(e, { tag: "classify-document.record" }));
+
+    if (envelope.result) {
+      return withCors(
+        NextResponse.json({
+          ...envelope.result,
+          provider: envelope.provider,
+          model: envelope.model,
+        }),
+        origin,
+      );
+    }
+    // JSON parse falló → degraded flag + heuristic fallback
+    const fb = heuristicFallback(body.file_name);
+    return withCors(
+      NextResponse.json({
+        ...fb,
+        degraded: true,
+        reason: envelope.degraded?.reason ?? "json_parse_failed",
+        provider: envelope.provider,
+        model: envelope.model,
+      }),
+      origin,
+    );
+  }
   return withCors(NextResponse.json(heuristicFallback(body.file_name)), origin);
 }

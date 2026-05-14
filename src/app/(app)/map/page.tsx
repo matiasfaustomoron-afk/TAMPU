@@ -15,7 +15,7 @@ import { MapPin, Plane, Route } from "lucide-react";
 // El componente original `trip-map.tsx` se mantiene para fallback.
 const TripMap = dynamic(() => import("@/components/map/trip-map-clustered"), {
   ssr: false,
-  loading: () => <div className="h-[480px] rounded-lg border bg-muted/20 flex items-center justify-center text-xs text-muted-foreground">Cargando mapa…</div>,
+  loading: () => <div className="h-[480px] rounded-lg border bg-muted/20 flex items-center justify-center text-xs text-muted-foreground">Cargando...</div>,
 });
 
 export default function MapPage() {

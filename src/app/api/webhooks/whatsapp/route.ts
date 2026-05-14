@@ -37,13 +37,20 @@ import { checkDailyBudget } from "@/lib/ai/rate-limit";
 
 export const runtime = "nodejs";
 
-// Límite mensual por user (Tampu+ tendrá unlimited — TODO próxima iteración
-// cuando consultemos is_tampu_plus desde acá).
-const MONTHLY_LIMIT_PER_USER = 200;
+// Límite mensual por user. Tampu+ (lifetime USD 29) lo desbloquea — chequeamos
+// is_tampu_plus() vía RPC para usuarios autenticados antes del cap.
+const MONTHLY_LIMIT_FREE = 200;
 
 const WHATSAPP_INGESTION_BUDGET_USD = Number(
-  process.env.WHATSAPP_INGESTION_DAILY_BUDGET_USD || "5",
+  // Default subido a 20 (audit 05/2026) — el budget de 5 era restrictivo
+  // y bloqueaba el feature en testing real. Igual configurable por env.
+  process.env.WHATSAPP_INGESTION_DAILY_BUDGET_USD || "20",
 );
+
+// Hard-coded per-user daily cap (audit 05/2026): nadie puede gastar más de
+// USD 0.50/día por mí sin un upgrade explícito a Tampu+. Esto protege
+// contra abuse de un usuario único que sature el budget global.
+const WHATSAPP_PER_USER_DAILY_USD = 0.5;
 
 /**
  * Parsea el body application/x-www-form-urlencoded de Twilio en un mapa
@@ -232,7 +239,20 @@ export async function POST(req: NextRequest) {
 
   const userId = link.user_id;
 
-  // ─── 6. Rate-limit mensual por user ─────────────────────────────────────
+  // ─── 6. Rate-limit mensual por user (Tampu+ unlimited) ──────────────────
+  // Consultamos is_tampu_plus(user_id) — si el user pagó el lifetime, su
+  // cap es Infinity. Si la RPC falla (función no existe en este deploy o
+  // error transitorio), tratamos al user como free para no abrir la
+  // puerta a abuso accidental.
+  let isPlus = false;
+  try {
+    const { data: plusData } = await sb.rpc("is_tampu_plus", { p_user_id: userId });
+    isPlus = plusData === true;
+  } catch {
+    isPlus = false;
+  }
+  const monthlyLimit = isPlus ? Number.POSITIVE_INFINITY : MONTHLY_LIMIT_FREE;
+
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
   const { count: monthCount } = await sb
     .from("whatsapp_messages")
@@ -241,8 +261,8 @@ export async function POST(req: NextRequest) {
     .eq("direction", "inbound")
     .in("status", ["parsed", "received", "failed"])
     .gte("received_at", monthStart);
-  if ((monthCount ?? 0) >= MONTHLY_LIMIT_PER_USER) {
-    const reply = `Llegaste al límite mensual de ${MONTHLY_LIMIT_PER_USER} mensajes parseados. Se renueva el mes que viene. Si querés más, Tampu+ (lifetime USD 29) lo desbloquea.`;
+  if ((monthCount ?? 0) >= monthlyLimit) {
+    const reply = `Llegaste al límite mensual de ${MONTHLY_LIMIT_FREE} mensajes parseados. Se renueva el mes que viene. Si querés más, Tampu+ (lifetime USD 29) lo desbloquea.`;
     // Guardamos como ignored para tracking
     await sb.from("whatsapp_messages").insert({
       user_id: userId,
@@ -278,13 +298,38 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Budget específico WhatsApp (subset del global)
+  // Budget específico WhatsApp (subset del global) + per-user cap
   const dayStart = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").toISOString();
   const { data: waCostRows } = await sb
     .from("whatsapp_messages")
-    .select("cost_usd")
+    .select("cost_usd, user_id")
     .gte("received_at", dayStart);
-  const waSpent = (waCostRows ?? []).reduce((acc, r) => acc + Number((r as { cost_usd: number | null }).cost_usd ?? 0), 0);
+  const allRows = waCostRows ?? [];
+  const waSpent = allRows.reduce((acc, r) => acc + Number((r as { cost_usd: number | null }).cost_usd ?? 0), 0);
+
+  // Per-user cap (excepto Tampu+, que no tiene cap diario tampoco).
+  if (!isPlus) {
+    const userSpent = allRows
+      .filter(r => (r as { user_id: string | null }).user_id === userId)
+      .reduce((acc, r) => acc + Number((r as { cost_usd: number | null }).cost_usd ?? 0), 0);
+    if (userSpent >= WHATSAPP_PER_USER_DAILY_USD) {
+      const reply = `Llegaste a tu límite diario de costo IA (USD ${WHATSAPP_PER_USER_DAILY_USD.toFixed(2)}). Se resetea mañana. Si querés más, Tampu+ (USD 29 lifetime) lo desbloquea.`;
+      await sb.from("whatsapp_messages").insert({
+        user_id: userId,
+        twilio_message_sid: messageSid,
+        direction: "inbound",
+        phone_e164: phoneE164,
+        body,
+        status: "ignored",
+        metadata: { kind: "per_user_daily_cap_reached", spent_usd: userSpent },
+      });
+      return new NextResponse(twimlResponse(reply), {
+        status: 200,
+        headers: { "Content-Type": "application/xml" },
+      });
+    }
+  }
+
   if (waSpent >= WHATSAPP_INGESTION_BUDGET_USD) {
     const reply = "Tampu se quedó sin presupuesto del día para parsear WhatsApp. Probá mañana 🙏";
     await sb.from("whatsapp_messages").insert({

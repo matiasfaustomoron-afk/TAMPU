@@ -48,7 +48,7 @@ const en: Dictionary = {
     trip: "Trip",
     vault: "Documents",
     money: "Money",
-    journal: "Photos",
+    journal: "Journal",
     more: "More",
     // Sub-routes
     assistant: "Assistant",
@@ -526,8 +526,52 @@ const en: Dictionary = {
 
   demoBanner: {
     eyebrow: "Demo mode",
-    message: "You're viewing an example trip. The data isn't yours.",
+    message: "This data is for demonstration.",
     exit: "Exit demo",
+  },
+
+  polls: {
+    title: "Polls",
+    subtitle: "Decide with your group",
+    emptyAllInactive: "No polls yet. Hotel A or B? Early or late dinner? Decide with your group.",
+    emptyClosed: "No closed polls yet.",
+    emptyActive: "No active polls.",
+    emptyAll: "No polls yet.",
+    create: "Create poll",
+    closed: "Closed",
+  },
+
+  inbox: {
+    title: "Inbox",
+    subtitle: "Forward emails to the trip alias",
+    forwardHeader: "Your trip address",
+    forwardInstruction: "Forward Booking, airline and hotel emails to the address below",
+    howTo: "How to forward",
+    howToStep1: "Tap the three dots on the email in your mail client",
+    howToStep2: "Choose 'Forward'",
+    howToStep3: "Paste the address below",
+    copyAddress: "Copy address",
+    copied: "Address copied to clipboard",
+    noClipboard: "Your browser does not support clipboard copy",
+    emptyState: "Send your first email to the alias above",
+    status: {
+      imported: "Imported",
+      failed: "Failed",
+      discarded: "Discarded",
+      pending: "Pending",
+    },
+  },
+
+  import: {
+    bandejaPerTripTitle: "Trip inbox",
+    bandejaPerTripBody: "Forward confirmations to the trip's unique address and they show up here.",
+    openInbox: "Open →",
+    pasteHelper: "Paste a confirmation email (LATAM, Despegar, Booking, Airbnb…)",
+    detectReservas: "Detect reservations",
+    importedTitle: "Done!",
+    importedBody: "Your reservation is now in the trip.",
+    importAnother: "Import another",
+    viewMyTrip: "View my trip",
   },
 };
 

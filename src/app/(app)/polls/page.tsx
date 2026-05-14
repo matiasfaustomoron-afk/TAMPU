@@ -8,6 +8,7 @@ import { PollCard } from "@/components/polls/poll-card";
 import { CreatePoll } from "@/components/polls/create-poll";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
 import { listPolls, isPollClosed, autoClosePollsIfDue, type Poll } from "@/lib/polls/poll";
+import { useI18n } from "@/i18n/provider";
 
 type Filter = "open" | "closed" | "all";
 
@@ -19,6 +20,7 @@ type Filter = "open" | "closed" | "all";
  * adelante la tabla `polls` existe en Supabase, el lib ya tiene wrapper.
  */
 export default function PollsPage() {
+  const { t } = useI18n();
   const { data: trip } = useActiveTrip();
   const [filter, setFilter] = useState<Filter>("open");
   // initial sync read so primer render no es vacío (Lazy initializer evita
@@ -93,7 +95,7 @@ export default function PollsPage() {
   if (!trip) {
     return (
       <div className="animate-fade-in">
-        <LargeTitle title="Encuestas" eyebrow="Decidí con el grupo" serif />
+        <LargeTitle title={t.polls.title} eyebrow={t.polls.subtitle} serif />
         <div className="px-4">
           <EmptyState
             title="Sin viaje activo"
@@ -109,7 +111,7 @@ export default function PollsPage() {
     <div className="animate-fade-in pb-24">
       <LargeTitle
         eyebrow={`${counts.open} activa${counts.open === 1 ? "" : "s"} · ${counts.closed} cerrada${counts.closed === 1 ? "" : "s"}`}
-        title="Encuestas"
+        title={t.polls.title}
         serif
       />
 
@@ -132,9 +134,9 @@ export default function PollsPage() {
           <div className="ios-card p-6 text-center">
             <Sparkles className="w-5 h-5 text-muted-foreground/60 mx-auto mb-2" />
             <p className="text-[14px] font-semibold">
-              {filter === "closed" ? "Sin polls cerrados todavía"
-                : filter === "all" ? "Sin polls todavía"
-                : "Sin polls activos"}
+              {filter === "closed" ? t.polls.emptyClosed
+                : filter === "all" ? t.polls.emptyAll
+                : t.polls.emptyActive}
             </p>
             <p className="text-[12.5px] text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
               Creá una para decidir entre opciones: hotel A vs B, cenar temprano
@@ -151,7 +153,7 @@ export default function PollsPage() {
                 <div className="relative">
                   {isPollClosed(p) && (
                     <div className="absolute -top-2 -left-1 z-10">
-                      <Pill tone="warn" className="!text-[10px]">Cerrada</Pill>
+                      <Pill tone="warn" className="!text-[10px]">{t.polls.closed}</Pill>
                     </div>
                   )}
                   <PollCard poll={p} onChange={refresh} />

@@ -33,7 +33,16 @@ export interface AgenticContext {
   mode: string;
   days_until_start: number;
   readiness_score: number;
-  vault?: Array<{ id: string; name: string; category: string; notes: string | null; file_type: string }>;
+  vault?: Array<{
+    id: string;
+    name: string;
+    category: string;
+    notes: string | null;
+    file_type: string;
+    /** Opcional: epoch ms del use_date asociado (boarding pass date, hotel check-in, etc).
+     *  Si está presente, find_in_vault desempata matches por proximidad a Date.now(). */
+    use_date_ts?: number | null;
+  }>;
   reservations?: Array<{ id: string; type: string; provider: string; description: string; locator: string | null; use_date: string | null; status: string }>;
 }
 
@@ -44,6 +53,11 @@ export interface AgenticResult {
   tools_used: Array<{ name: string; input: unknown; outcome: "ok" | "error" | "no-data" }>;
   /** Suggestions estructuradas extraídas */
   suggestions: Array<{ title: string; detail: string; priority: string; deep_link?: string }>;
+  /** Tokens reales reportados por la API (acumulado del loop). */
+  usage: { inputTokens: number; outputTokens: number };
+  /** Modelo concreto usado (para honest UI + cost calc). */
+  model: string;
+  provider: "anthropic";
 }
 
 // ─── TOOL DEFINITIONS (lo que ve Claude) ─────────────────────────────────
@@ -171,16 +185,20 @@ function execFindInVault(
     return "Vault vacío. El user todavía no subió documentos.";
   }
   const keywords = input.query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const now = Date.now();
   const scored = ctx.vault
     .map((f) => {
       const hay = `${f.name} ${f.category} ${f.notes || ""}`.toLowerCase();
       let score = 0;
       for (const k of keywords) if (hay.includes(k)) score += 1;
       if (input.category && f.category === input.category) score += 3;
-      return { f, score };
+      // Distancia al "ahora" — usada como desempate (menos = más relevante).
+      const dateDelta = typeof f.use_date_ts === "number" ? Math.abs(f.use_date_ts - now) : Number.POSITIVE_INFINITY;
+      return { f, score, dateDelta };
     })
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
+    // Tie-break: primero por score desc, después por proximidad al "ahora" asc.
+    .sort((a, b) => (b.score - a.score) || (a.dateDelta - b.dateDelta))
     .slice(0, 3);
   if (scored.length === 0) return "Sin matches en el vault.";
   return JSON.stringify(
@@ -271,14 +289,14 @@ function execGetTripSummary(ctx: AgenticContext): string {
 // ─── AGENTIC LOOP ─────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Sos el asistente de viajes de Tampu para el Cono Sur (Argentina, Chile, Uruguay).
-Hablás español rioplatense, conciso, sin marketing speak.
+Hablás español rioplatense (voseo: "sos", "tenés", "decime", "fijate"), conciso, sin marketing speak.
 
-Tu trabajo: ayudar al viajero usando las TOOLS disponibles cuando necesitás info que NO está
+Tu tarea: ayudar al viajero usando las TOOLS disponibles cuando necesitás info que NO está
 en el contexto inicial. Patrones típicos:
 
-1. Pregunta sobre un destino que no conocés → usa search_destination
-2. "Dame mi boarding/seguro" → usa find_in_vault
-3. "Cuánto sale volar a X" → usa estimate_flight_price
+1. Pregunta sobre un destino que no conocés → usá search_destination
+2. "Dame mi boarding/seguro" → usá find_in_vault
+3. "Cuánto sale volar a X" → usá estimate_flight_price
 4. "Cómo está mi viaje" / "qué me falta" → get_trip_summary
 
 Reglas:
@@ -286,6 +304,9 @@ Reglas:
 - NUNCA inventes precios, locators, ni fechas.
 - Si encontrás un archivo en vault, incluí su deep_link en la respuesta.
 - Cierre: respuesta máximo 3-4 oraciones + suggestions estructuradas si hay acciones.
+- AFFILIATE GUARD: SOLO invocá generate_booking_link cuando el user EXPLICITAMENTE pidió
+  comparar precios, reservar, o booking. NUNCA en preguntas informativas ("cuándo abre X",
+  "qué tal Cusco"). Si dudás, NO generes el link — el user puede pedirlo después.
 
 Al final, devolvés UN texto en español rioplatense. Las "suggestions" estructuradas se
 extraen del texto automáticamente — no tenés que pedirlas en JSON, solo respondé natural.`;
@@ -304,6 +325,7 @@ interface AnthropicResponse {
     input?: Record<string, unknown>;
   }>;
   stop_reason: "end_turn" | "tool_use" | "max_tokens" | string;
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 async function executeAnthropicCall(
@@ -321,9 +343,14 @@ async function executeAnthropicCall(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-5",
         max_tokens: 1500,
-        system: SYSTEM_PROMPT,
+        // Prompt caching: SYSTEM_PROMPT + TOOLS son grandes y se repiten
+        // entre todas las llamadas → cacheamos para descontar ~90% del input
+        // cost en hits subsiguientes (TTL ephemeral ~5min).
+        system: [
+          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+        ],
         tools: TOOLS,
         messages,
       }),
@@ -355,10 +382,17 @@ export async function runAgenticAssistant(
     },
   ];
   const toolsUsed: AgenticResult["tools_used"] = [];
+  // Acumular usage real del loop completo.
+  const usage = { inputTokens: 0, outputTokens: 0 };
+  const MODEL = "claude-sonnet-4-5";
 
   for (let iter = 0; iter < 4; iter++) {
     const response = await executeAnthropicCall(key, messages);
     if (!response) return null;
+
+    // Sumar tokens reales de esta iteración
+    usage.inputTokens += response.usage?.input_tokens ?? 0;
+    usage.outputTokens += response.usage?.output_tokens ?? 0;
 
     // Acumular asistente turn
     messages.push({ role: "assistant", content: response.content as unknown as Array<Record<string, unknown>> });
@@ -376,6 +410,9 @@ export async function runAgenticAssistant(
           answer: unwrapped.answer,
           tools_used: toolsUsed,
           suggestions: unwrapped.suggestions,
+          usage,
+          model: MODEL,
+          provider: "anthropic",
         };
       }
       return {
@@ -383,6 +420,9 @@ export async function runAgenticAssistant(
         answer: raw,
         tools_used: toolsUsed,
         suggestions: extractSuggestions(raw, toolsUsed),
+        usage,
+        model: MODEL,
+        provider: "anthropic",
       };
     }
 
@@ -445,6 +485,9 @@ export async function runAgenticAssistant(
           answer: unwrapped.answer,
           tools_used: toolsUsed,
           suggestions: unwrapped.suggestions,
+          usage,
+          model: MODEL,
+          provider: "anthropic",
         };
       }
       // Si el texto NO es JSON wrappable y la respuesta del modelo no tuvo
@@ -459,6 +502,9 @@ export async function runAgenticAssistant(
         answer: raw,
         tools_used: toolsUsed,
         suggestions: extractSuggestions(raw, toolsUsed),
+        usage,
+        model: MODEL,
+        provider: "anthropic",
       };
     }
     return null;
@@ -470,6 +516,9 @@ export async function runAgenticAssistant(
     answer: "Tu pregunta requiere más pasos de los que puedo manejar en una sola pasada. Probá una pregunta más específica.",
     tools_used: toolsUsed,
     suggestions: [],
+    usage,
+    model: MODEL,
+    provider: "anthropic",
   };
 }
 

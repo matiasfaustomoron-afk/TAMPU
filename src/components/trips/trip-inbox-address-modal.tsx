@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Sheet } from "@/components/ios";
-import { Button } from "@/components/ui/button";
-import { Mail, Copy, Check, MessageCircle, ExternalLink } from "lucide-react";
+import { MessageCircle, ExternalLink } from "lucide-react";
 import { getInboxAddress, tripShortId } from "@/lib/email-in/address";
-import { haptic } from "@/lib/native/platform";
-import { toast } from "@/components/ios/toast";
+import { AddressDisplay } from "@/components/shared/AddressDisplay";
+import { useI18n } from "@/i18n/provider";
 import type { Trip } from "@/lib/types/database";
 
 interface Props {
@@ -29,55 +28,21 @@ interface Props {
  * es para Seúl", la address lo identifica.
  */
 export function TripInboxAddressModal({ open, onClose, trip }: Props) {
+  const { t } = useI18n();
   const address = useMemo(() => getInboxAddress(trip.id), [trip.id]);
   const shortId = useMemo(() => tripShortId(trip.id), [trip.id]);
   const whatsappNumber = process.env.NEXT_PUBLIC_TAMPU_WHATSAPP_NUMBER || null;
 
-  const [copied, setCopied] = useState(false);
-
-  const copyAddress = useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      toast("Clipboard no disponible", "warn");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(address);
-      haptic("light");
-      setCopied(true);
-      toast("Address copiada", "success");
-      setTimeout(() => setCopied(false), 2200);
-    } catch {
-      toast("No se pudo copiar", "warn");
-    }
-  }, [address]);
-
   return (
-    <Sheet open={open} onClose={onClose} title="Tu address del viaje">
+    <Sheet open={open} onClose={onClose} title={t.inbox.forwardHeader}>
       <div className="space-y-4 pb-2 animate-fade-in">
-        {/* Address card */}
+        {/* Address card — short id + QR + address + copy/share. */}
         <div className="ios-card p-4">
-          <div className="flex items-start gap-3">
-            <span className="w-10 h-10 rounded-2xl tampu-icon tampu-icon-indigo flex items-center justify-center shrink-0">
-              <Mail className="w-5 h-5" />
+          <AddressDisplay address={address} shortId={shortId} label={t.inbox.forwardHeader} />
+          <div className="mt-3 flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+            <span>
+              Viaje <span className="text-foreground font-medium">{trip.name}</span>
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold tracking-[0.16em] uppercase text-muted-foreground mb-1">
-                Forwardeá emails a
-              </p>
-              <p className="font-mono text-[14.5px] font-semibold break-all leading-tight select-all">
-                {address}
-              </p>
-              <p className="text-[11.5px] text-muted-foreground mt-1.5">
-                Short ID: <span className="font-mono">{shortId}</span> · viaje{" "}
-                <span className="text-foreground font-medium">{trip.name}</span>
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button onClick={copyAddress} size="sm" className="gap-1.5">
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Copiado" : "Copiar"}
-            </Button>
             <a
               href={`mailto:${address}?subject=Test%20Tampu&body=Hola%2C%20esto%20es%20un%20test%20de%20mi%20address.`}
               className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-[12px] font-semibold text-foreground"
@@ -122,7 +87,7 @@ export function TripInboxAddressModal({ open, onClose, trip }: Props) {
         {/* Instructions */}
         <div className="space-y-2">
           <p className="text-[10px] font-bold tracking-[0.16em] uppercase text-muted-foreground px-1">
-            Cómo forwardear
+            {t.inbox.howTo}
           </p>
 
           <details className="ios-card p-3" open>
@@ -131,7 +96,7 @@ export function TripInboxAddressModal({ open, onClose, trip }: Props) {
             </summary>
             <ol className="mt-2 pl-7 space-y-1 text-[12px] text-muted-foreground leading-relaxed list-decimal">
               <li>Abrí el email de confirmación (vuelo, hotel, tour, etc.).</li>
-              <li>Tap en los <strong>tres puntos</strong> arriba a la derecha → <strong>Reenviar</strong>.</li>
+              <li>Tocá los <strong>tres puntos</strong> arriba a la derecha → <strong>Reenviar</strong>.</li>
               <li>En el destinatario pegá <span className="font-mono text-foreground">{address}</span>.</li>
               <li>Enviá. En 30 segundos aparece en tu Bandeja del viaje.</li>
             </ol>

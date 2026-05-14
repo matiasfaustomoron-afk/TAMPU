@@ -79,6 +79,59 @@
   --icon-lg: 24px;
   --icon-xl: 32px;
 
+  /* ─── Font-size scale tokens — UNA escala canónica.
+     Reemplaza el zoo de `text-[Xpx]` ad-hoc por una escala discreta de 10
+     pasos. Cada paso "suena" iOS (Apple type ramp) y mantiene line-height
+     ratio coherente.
+
+     Reglas:
+       --text-xxs  10px → micro-labels, badges, status pills muy chicos
+       --text-xs   11px → eyebrows, tracking-wide labels (ya .eyebrow lo usa)
+       --text-sm   13px → body chico, captions, fechas
+       --text-base 15px → body default iOS (no 16px del web, sí 15px del HIG)
+       --text-lg   17px → subheads, list row primary, button text grande
+       --text-xl   20px → cards titles, section titles
+       --text-2xl  24px → screen titles modal
+       --text-3xl  32px → screen heroes (no welcome — welcome usa serif clamp)
+       --text-4xl  48px → hero numbers, countdowns
+       --text-5xl  64px → splash / countdown gigante
+
+     TODO: sweep ad-hoc `text-[Xpx]` a utility classes — son ~120 archivos
+     que llaman a text-[10px]/text-[11px]/text-[12px]/etc. Demasiado para
+     este sprint; queda como Workstream E v2. */
+  --text-xxs:  10px;
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-lg:   17px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  32px;
+  --text-4xl:  48px;
+  --text-5xl:  64px;
+
+  /* ─── Chart colors — tokens para CategoryDonut y TripMap.
+     Tipos en HSL para máxima compatibilidad. Originalmente eran hex
+     hardcodeados en `category-donut.tsx` y `trip-map.tsx` con palette
+     genérica Tailwind. Mantenemos cercanía visual a esos hex (no rompemos
+     legibilidad) pero ahora son tokens overridables por brand. */
+  --color-chart-food:          25  95% 53%;   /* food — naranja saturado */
+  --color-chart-transport:     217 91% 60%;   /* transport — azul */
+  --color-chart-accommodation: 158 64% 42%;   /* accommodation — verde esmeralda */
+  --color-chart-activities:    272 79% 65%;   /* activities — violeta */
+  --color-chart-shopping:      328 78% 60%;   /* shopping — rosa */
+  --color-chart-insurance:     188 91% 43%;   /* insurance — cyan */
+  --color-chart-flights:       199 89% 48%;   /* flights — sky */
+  --color-chart-visas:         38  92% 50%;   /* visas — ámbar */
+  --color-chart-health:        0   84% 60%;   /* health — rojo */
+  --color-chart-connectivity:  239 84% 67%;   /* connectivity — indigo */
+  --color-chart-other:         240 4%  46%;   /* other — neutral */
+  --color-chart-contingency:   240 5%  65%;   /* contingency — neutral light */
+  --color-chart-track:         217 91% 60%;   /* mapa: track real GPS */
+  --color-chart-route:         158 64% 42%;   /* mapa: ruta planificada */
+  --color-chart-warning:       38  92% 50%;   /* mapa: cobertura parcial */
+  --color-chart-danger:        0   84% 60%;   /* mapa: sin cobertura */
+
   /* ─── Shadows — feather soft, iOS depth ─── */
   --shadow-card: 0 0.5px 1px rgba(0, 0, 0, 0.05), 0 2px 6px rgba(0, 0, 0, 0.08);
   --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.18), 0 16px 56px rgba(0, 0, 0, 0.12);
@@ -921,6 +974,37 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .cv-auto-sm {
   content-visibility: auto;
   contain-intrinsic-size: 0 320px;
+}
+
+/* ─── Font-size scale utilities — usar via classes en JSX ───
+   Convivimos con Tailwind text-* defaults. Estas son utilities Tampu opt-in
+   para code que queremos auditar contra la escala canónica
+   (ver @theme tokens --text-*). */
+.text-scale-xxs  { font-size: var(--text-xxs);  line-height: 1.35; }
+.text-scale-xs   { font-size: var(--text-xs);   line-height: 1.35; }
+.text-scale-sm   { font-size: var(--text-sm);   line-height: 1.40; }
+.text-scale-base { font-size: var(--text-base); line-height: 1.45; }
+.text-scale-lg   { font-size: var(--text-lg);   line-height: 1.40; }
+.text-scale-xl   { font-size: var(--text-xl);   line-height: 1.30; }
+.text-scale-2xl  { font-size: var(--text-2xl);  line-height: 1.20; }
+.text-scale-3xl  { font-size: var(--text-3xl);  line-height: 1.10; }
+.text-scale-4xl  { font-size: var(--text-4xl);  line-height: 1.05; }
+.text-scale-5xl  { font-size: var(--text-5xl);  line-height: 1.00; }
+
+/* ─── Text balance — typography premium en hero titles.
+   `text-wrap: balance` distribuye las líneas para evitar "viuda" (1 palabra
+   en última línea). Soportado en Chrome 114+ / Safari 17.4+ / Firefox 121+.
+   Fallback graceful: nada — browsers viejos rinden text normal. */
+.text-balance { text-wrap: balance; }
+.text-pretty  { text-wrap: pretty; }
+
+/* ─── FAB stacking — hide MoreFab en viewports muy chicos.
+   iPhone SE 1st gen / iPhone 13 mini landscape (568pt × ~320pt visible).
+   3 FABs apilados + tab bar comen >40% del alto. Estética rota.
+   En esos viewports el user accede a "Más" vía link directo a /more
+   desde menus contextuales en cada tab — NO se pierde funcionalidad. */
+@media (max-height: 700px) {
+  .more-fab { display: none !important; }
 }
 
 /* ─── A11y AAA — prefers-reduced-transparency ───

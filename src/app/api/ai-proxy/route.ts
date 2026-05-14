@@ -149,7 +149,12 @@ export async function POST(req: NextRequest) {
         // (y ajustá el costo en PROXY-DESIGN.md).
         model: "claude-haiku-4-5",
         max_tokens: maxTokens,
-        ...(body.system ? { system: body.system } : {}),
+        // Prompt caching ephemeral — ahorra ~90% del input cost en hits
+        // cacheados (system prompts repetidos entre llamadas del mismo
+        // endpoint en la ventana de 5 min).
+        ...(body.system
+          ? { system: [{ type: "text", text: body.system, cache_control: { type: "ephemeral" } }] }
+          : {}),
         messages: [{ role: "user", content: body.userMessage }],
       }),
     });
@@ -178,20 +183,26 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. Record el uso (fire-and-forget — no esperamos persistencia Supabase)
+  // Tokens REALES del provider. Fallback a estimación solo si la API no devolvió usage.
   const tokensIn = json.usage?.input_tokens ?? Math.ceil((body.userMessage.length + (body.system?.length ?? 0)) / 4);
   const tokensOut = json.usage?.output_tokens ?? 0;
+  const PROXY_MODEL = "claude-haiku-4-5";
   void recordProxyCall(decision.identifier, {
     endpoint: decision.endpoint,
     tokensIn,
     tokensOut,
-    costUsd: estimateCostUsd(tokensIn, tokensOut, "haiku"),
+    costUsd: estimateCostUsd(tokensIn, tokensOut, PROXY_MODEL),
+    provider: "tampu",
+    model: PROXY_MODEL,
   }).catch((e) => captureException(e, { tag: "ai-proxy.record" }));
 
-  // 5. Return
+  // 5. Return — incluímos `provider` + `model` para UI honesta sobre qué modelo respondió.
   return withCors(
     NextResponse.json({
       text,
       source: "proxy",
+      provider: "tampu",
+      model: PROXY_MODEL,
       tokensUsed: {
         input: json.usage?.input_tokens ?? 0,
         output: json.usage?.output_tokens ?? 0,

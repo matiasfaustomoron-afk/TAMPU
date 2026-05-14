@@ -18,6 +18,7 @@ import type { ParsedBooking } from "@/lib/parsing/email-parser";
 import { track, EVENTS } from "@/lib/analytics";
 import { Confetti } from "@/components/ios/confetti";
 import { HintCard } from "@/components/ios/hint-card";
+import { useI18n } from "@/i18n/provider";
 
 // ─── Inbox types ──────────────────────────────────────────────────────────
 interface InboxEntry {
@@ -122,6 +123,7 @@ const CONFIDENCE_TONE: Record<ParsedBooking["confidence"], string> = {
 
 export default function ImportPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const { data: trip } = useActiveTrip();
   const { addReservation } = useMutations();
 
@@ -413,16 +415,16 @@ export default function ImportPage() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold tracking-[0.12em] uppercase text-muted-foreground">
-                Bandeja per-trip
+                {t.import.bandejaPerTripTitle}
               </p>
               <p className="text-[15px] font-semibold leading-tight mt-0.5">
-                Inbox de emails de {trip.name}
+                Bandeja de emails de {trip.name}
               </p>
               <p className="text-[12.5px] text-muted-foreground mt-0.5 leading-snug">
-                Forwardeá confirmaciones a la address única del viaje y aparecen acá.
+                {t.import.bandejaPerTripBody}
               </p>
             </div>
-            <span className="text-[12px] font-semibold text-primary shrink-0 mt-1">Abrir →</span>
+            <span className="text-[12px] font-semibold text-primary shrink-0 mt-1">{t.import.openInbox}</span>
           </a>
         </section>
       )}
@@ -496,10 +498,10 @@ export default function ImportPage() {
             <div className="w-16 h-16 mx-auto rounded-3xl tampu-gradient-cardon flex items-center justify-center mb-4 shadow-[var(--shadow-floating)] heart-pop">
               <Check className="w-8 h-8 text-white" strokeWidth={2.4} />
             </div>
-            <h2 className="font-serif text-3xl">¡Listo!</h2>
+            <h2 className="font-serif text-3xl">{t.import.importedTitle}</h2>
             <p className="text-[14px] text-muted-foreground mt-2 max-w-sm mx-auto">
               {committedCount === 1
-                ? "Tu reserva ya está en el viaje."
+                ? t.import.importedBody
                 : `${committedCount} reservas ya están en tu viaje.`}
             </p>
             <div className="mt-6 grid grid-cols-2 gap-2">
@@ -512,10 +514,10 @@ export default function ImportPage() {
                   setCommittedCount(0);
                 }}
               >
-                Importar otra
+                {t.import.importAnother}
               </Button>
               <Button onClick={() => router.push("/itinerary")} className="tampu-gradient-warm text-white">
-                Ver mi viaje
+                {t.import.viewMyTrip}
               </Button>
             </div>
           </div>
@@ -554,7 +556,7 @@ export default function ImportPage() {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Detectar reservas
+                    {t.import.detectReservas}
                   </>
                 )}
               </Button>

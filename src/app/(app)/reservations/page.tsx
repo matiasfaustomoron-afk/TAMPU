@@ -229,7 +229,7 @@ export default function ReservationsPage() {
       {/* Polls contextuales del trip. Si hay 2+ pending del mismo tipo,
           el componente sugiere "votá entre A y B". */}
       {trip && <TripPollsSection tripId={trip.id} maxShown={3}
-        emptyHint="Sin polls. ¿Hotel A o B? ¿Tour mañana o tarde? Decidí con el grupo." />}
+        emptyHint={t.polls.emptyAllInactive} />}
     </div>
   );
 }

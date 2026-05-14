@@ -15,7 +15,7 @@ const es = {
     none: "Ninguno",
     yes: "Sí",
     no: "No",
-    ok: "OK",
+    ok: "Aceptar",
     back: "Volver",
     next: "Siguiente",
     viewAll: "Ver todos",
@@ -25,7 +25,7 @@ const es = {
     go: "Ir",
     start: "Iniciar",
     complete: "Completar",
-    acknowledge: "Acusar recibo",
+    acknowledge: "Visto",
     dismiss: "Descartar",
     markReady: "Marcar listo",
     days: "días",
@@ -37,7 +37,7 @@ const es = {
     of: "de",
     used: "usado",
     remaining: "restante",
-    onTrack: "En línea",
+    onTrack: "Al día",
     overBy: "Excede en",
   },
 
@@ -50,7 +50,7 @@ const es = {
     trip: "Viaje",
     vault: "Documentos",
     money: "Dinero",
-    journal: "Fotos",
+    journal: "Diario",
     more: "Más",
     // Sub-routes (labels usadas dentro de cada tab)
     assistant: "Asistente",
@@ -87,7 +87,7 @@ const es = {
     signIn: "Iniciar sesión",
     signUp: "Registrarse",
     signOut: "Cerrar sesión",
-    email: "Correo electrónico",
+    email: "Email",
     password: "Contraseña",
     noAccount: "¿No tenés cuenta?",
     hasAccount: "¿Ya tenés cuenta?",
@@ -102,7 +102,7 @@ const es = {
 
   // ─── DASHBOARD ───
   dashboard: {
-    daysToGo: "Faltan",
+    daysToGo: "Faltan días",
     departs: "Sale",
     tripInProgress: "Viaje en curso",
     readiness: "Preparación",
@@ -472,7 +472,7 @@ const es = {
     next7: {
       title: "Próximos 7 días",
       today: "Hoy",
-      preTrip: "Pre-viaje",
+      preTrip: "Antes del viaje",
       tripDay: "Día",
     },
     money: {
@@ -487,7 +487,7 @@ const es = {
     risk: {
       title: "Riesgos",
       allClear: "Todo en orden",
-      openIssues: "issues abiertos",
+      openIssues: "Asuntos pendientes",
       health: "Salud",
       documents: "Documentos",
       money: "Dinero",
@@ -496,16 +496,16 @@ const es = {
     },
     decisions: {
       title: "Decisiones abiertas",
-      subtitle: "Lo que requiere decisión, no operación",
+      subtitle: "Cosas que tenés que decidir",
       noDecisions: "Sin decisiones pendientes",
       viewAll: "Ver todas",
     },
     cashflow: {
-      title: "Cashflow",
+      title: "Flujo de dinero",
       spent: "Gastado",
       committed: "Comprometido",
       budget: "Presupuesto",
-      burn: "Tasa diaria",
+      burn: "Gasto por día",
       perDay: "/día",
       payments: "Pagos próximos",
       daily: "Por día",
@@ -541,7 +541,7 @@ const es = {
         body: "Reenviás el email de la aerolínea y aparece como pase en la app. Listo para Apple Wallet.",
       },
       vault: {
-        title: "Vault cifrado",
+        title: "Bóveda cifrada",
         body: "Pasaporte, visas y seguros guardados en tu dispositivo, accesibles offline.",
       },
       money: {
@@ -557,7 +557,7 @@ const es = {
       noAccounts: "Sin cuentas",
       noTracking: "Sin tracking",
       wallet: "Apple Wallet",
-      languages: "Español + PT",
+      languages: "Español",
     },
     demoConfirm: {
       title: "Ya tenés un viaje cargado",
@@ -606,8 +606,55 @@ const es = {
   // en app-layout y se auto-oculta en /welcome + /passcode.
   demoBanner: {
     eyebrow: "Modo demo",
-    message: "Estás viendo un viaje de ejemplo. Los datos no son tuyos.",
+    message: "Estos datos son de demostración.",
     exit: "Salir del demo",
+  },
+
+  // ─── POLLS ───
+  polls: {
+    title: "Encuestas",
+    subtitle: "Decidí con el grupo",
+    emptyAllInactive: "Sin encuestas. ¿Hotel A o B? ¿Cena temprano o tarde? Decidí con el grupo.",
+    emptyClosed: "Sin encuestas cerradas todavía.",
+    emptyActive: "Sin encuestas activas.",
+    emptyAll: "Sin encuestas todavía.",
+    create: "Crear encuesta",
+    closed: "Cerrada",
+  },
+
+  // ─── INBOX (per-trip email alias) ───
+  inbox: {
+    title: "Bandeja",
+    subtitle: "Reenviá emails al alias del viaje",
+    forwardHeader: "Tu dirección del viaje",
+    forwardInstruction: "Reenviá emails de Booking, Aerolíneas, hoteles a la dirección de abajo",
+    howTo: "Cómo reenviar",
+    howToStep1: "Tocá los tres puntos del email en tu cliente de mail",
+    howToStep2: "Elegí 'Reenviar'",
+    howToStep3: "Pegá la dirección de abajo",
+    copyAddress: "Copiar dirección",
+    copied: "Dirección copiada al portapapeles",
+    noClipboard: "Tu navegador no soporta copiar al portapapeles",
+    emptyState: "Mandá tu primer email al alias de arriba",
+    status: {
+      imported: "Importado",
+      failed: "Falló",
+      discarded: "Descartado",
+      pending: "Pendiente",
+    },
+  },
+
+  // ─── IMPORT (paste-email flow) ───
+  import: {
+    bandejaPerTripTitle: "Bandeja del viaje",
+    bandejaPerTripBody: "Reenviá confirmaciones a la dirección única del viaje y aparecen acá.",
+    openInbox: "Abrir →",
+    pasteHelper: "Pegá un email de confirmación (LATAM, Despegar, Booking, Airbnb…)",
+    detectReservas: "Detectar reservas",
+    importedTitle: "¡Listo!",
+    importedBody: "Tu reserva ya está en el viaje.",
+    importAnother: "Importar otra",
+    viewMyTrip: "Ver mi viaje",
   },
 } as const;
 

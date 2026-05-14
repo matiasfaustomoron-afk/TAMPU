@@ -105,7 +105,7 @@ export const HINTS: Record<string, HintDef> = {
   "map-cluster": {
     id: "map-cluster",
     when: "feature-discovery",
-    title: "Tap en un día del mapa",
+    title: "Tocá un día del mapa",
     body: "Los pines del mapa están coloreados por día del viaje. Tocá un número para filtrar y ver solo los puntos de ese día. La ruta se redibuja.",
     tone: "tip",
   },
@@ -113,7 +113,7 @@ export const HINTS: Record<string, HintDef> = {
     id: "optimize-route",
     when: "feature-discovery",
     title: "Optimizar la ruta del día",
-    body: "Si tenés varias paradas en un día, Tampu calcula el orden óptimo para no zig-zaguear. Tap en \"Optimizar ruta\" arriba del mapa.",
+    body: "Si tenés varias paradas en un día, Tampu calcula el orden óptimo para no zig-zaguear. Tocá \"Optimizar ruta\" arriba del mapa.",
     tone: "tip",
   },
 };

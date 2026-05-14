@@ -9,10 +9,16 @@ export async function fetchCities(db: SupabaseClient, tripId: string): Promise<C
 }
 
 // ─── EXPENSES ───
+// Columnas explícitas en list view. attachment_url y notes pueden ser largos:
+// los traemos igual porque list view los necesita (preview + tooltip), pero
+// dejamos la lista clara para fácil pruning futuro.
+const EXPENSE_LIST_COLUMNS =
+  "id, trip_id, date, city_id, city_name, category, subcategory, description, payment_method, original_currency, original_amount, exchange_rate, base_amount, is_fixed, is_budgeted, reservation_id, attachment_url, notes, created_at";
+
 export async function fetchExpenses(db: SupabaseClient, tripId: string): Promise<Expense[]> {
-  const { data, error } = await db.from("expenses").select("*").eq("trip_id", tripId).order("date", { ascending: false });
+  const { data, error } = await db.from("expenses").select(EXPENSE_LIST_COLUMNS).eq("trip_id", tripId).order("date", { ascending: false });
   if (error) throw error;
-  return data ?? [];
+  return (data as Expense[] | null) ?? [];
 }
 export async function insertExpense(db: SupabaseClient, expense: Omit<Expense, "id" | "created_at">): Promise<Expense | null> {
   const { data, error } = await db.from("expenses").insert(expense).select().maybeSingle();
@@ -26,10 +32,14 @@ export async function removeExpense(db: SupabaseClient, id: string): Promise<boo
 }
 
 // ─── RESERVATIONS ───
+// Columnas explícitas en list view.
+const RESERVATION_LIST_COLUMNS =
+  "id, trip_id, type, criticality, provider, city_id, city_name, description, purchase_date, use_date, use_end_date, payment_deadline, original_amount, original_currency, exchange_rate, base_amount, status, confirmation_received, locator, link, contact, cancellation_policy, is_cancellable, notes, created_at, updated_at";
+
 export async function fetchReservations(db: SupabaseClient, tripId: string): Promise<Reservation[]> {
-  const { data, error } = await db.from("reservations").select("*").eq("trip_id", tripId).order("use_date");
+  const { data, error } = await db.from("reservations").select(RESERVATION_LIST_COLUMNS).eq("trip_id", tripId).order("use_date");
   if (error) throw error;
-  return data ?? [];
+  return (data as Reservation[] | null) ?? [];
 }
 export async function mutateReservation(db: SupabaseClient, id: string, updates: Partial<Reservation>): Promise<Reservation | null> {
   const { data, error } = await db.from("reservations").update(updates).eq("id", id).select().maybeSingle();
@@ -86,7 +96,13 @@ export async function batchUpsertBudgetCategories(
 
 // ─── DOCUMENTS ───
 export async function fetchDocuments(db: SupabaseClient, tripId: string): Promise<Document[]> {
-  const { data, error } = await db.from("documents").select("*").eq("trip_id", tripId);
+  // Order by created_at DESC: documents recientes primero (mejor UX cuando el
+  // user acaba de subir un boarding pass o seguro).
+  const { data, error } = await db
+    .from("documents")
+    .select("*")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
 }

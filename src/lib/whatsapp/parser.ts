@@ -165,7 +165,12 @@ async function callAnthropicHaiku(
       body: JSON.stringify({
         model: "claude-haiku-4-5",
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        // Prompt caching — SYSTEM_PROMPT es grande (~2k tokens), se cachea
+        // con TTL ephemeral (~5min). En ráfagas (varios mensajes seguidos
+        // del mismo user), el segundo+ hit descuenta ~90% del input cost.
+        system: [
+          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+        ],
         messages: [{ role: "user", content: userMessage }],
       }),
     });
@@ -299,6 +304,8 @@ export async function parseWhatsAppText(
         tokensIn: r.tokensIn,
         tokensOut: r.tokensOut,
         costUsd,
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
       }).catch((e) => captureException(e, { tag: "whatsapp.parser.record", level: "warning" }));
       return {
         parsed,
@@ -325,6 +332,8 @@ export async function parseWhatsAppText(
         tokensIn: r.tokensIn,
         tokensOut: r.tokensOut,
         costUsd,
+        provider: "gemini",
+        model: "gemini-2.0-flash",
       }).catch((e) => captureException(e, { tag: "whatsapp.parser.record", level: "warning" }));
       return {
         parsed,

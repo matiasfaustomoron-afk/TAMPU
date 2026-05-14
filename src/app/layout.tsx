@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Inter, Instrument_Serif } from "next/font/google";
 import { SupabaseProvider } from "@/lib/context/supabase-provider";
+import { TampuQueryProvider } from "@/lib/context/query-provider";
 import { I18nProvider } from "@/i18n/provider";
 import { ServiceWorkerRegistrar } from "@/components/layout/service-worker";
 import { NativeBootstrap } from "@/components/layout/native-bootstrap";
@@ -121,11 +122,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
         <GlobalErrorBoundary>
-          <SupabaseProvider>
-            <I18nProvider>
-              {children}
-            </I18nProvider>
-          </SupabaseProvider>
+          <TampuQueryProvider>
+            <SupabaseProvider>
+              <I18nProvider>
+                {children}
+              </I18nProvider>
+            </SupabaseProvider>
+          </TampuQueryProvider>
         </GlobalErrorBoundary>
         <ServiceWorkerRegistrar />
         <OfflineIndicator />

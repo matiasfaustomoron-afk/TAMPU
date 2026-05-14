@@ -1,5 +1,18 @@
 // ─── TRAVEL OS TYPES ───
 // Mirrors the database schema. Single source of truth.
+//
+// MIGRATION PATH: cuando se genere supabase-generated.ts vía supabase CLI,
+// los Row types pueden re-exportarse así (descomentar):
+//
+//   import type { Database } from "./supabase-generated";
+//   export type Trip = Database['public']['Tables']['trips']['Row'];
+//   export type Reservation = Database['public']['Tables']['reservations']['Row'];
+//   // etc.
+//
+// Por ahora los tipos manuales siguen siendo la source-of-truth (más completos
+// y con discriminated unions en status/severity). supabase-generated.ts
+// re-exporta DESDE estos, no al revés. Cuando el gen real corra, invertir
+// la dirección de la dependencia.
 
 export type UUID = string;
 export type ISODate = string;

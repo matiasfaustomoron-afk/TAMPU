@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { runAgenticAssistant, type AgenticContext } from "@/lib/ai/agentic";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { captureException } from "@/lib/observability/sentry";
@@ -68,14 +68,14 @@ interface AssistantResponse {
   suggestions: Suggestion[];
 }
 
-const SYSTEM_PROMPT = `Eres un asistente experto en logística de viajes complejos. Recibís:
+const SYSTEM_PROMPT = `Sos un asistente argentino experto en logística de viajes complejos. Recibís:
 - Estado del viaje (fechas, readiness, tareas críticas, reservas, alertas, pagos)
 - VAULT: lista de archivos del usuario (boarding passes, pasaporte, seguro, recibos)
 - RESERVATIONS: reservas con locator + provider + fecha (para matchear con vault)
 - CURRENT_LOCATION: GPS actual + aeropuerto más cercano (si está habilitado)
 - AIRPORTS_IN_TRIP: info de cada aeropuerto del viaje (terminales, food, currency, transport, tips)
 
-Tu trabajo es responder UNA pregunta del viajero. Tipos típicos:
+Tu tarea: responder UNA pregunta del viajero. Tipos típicos:
 
 A) ACCIÓN URGENTE: "qué tengo que hacer ya", "qué me falta"
    → Listá lo crítico, ordenado por urgencia.
@@ -300,34 +300,59 @@ function buildHeuristic(ctx: AssistantContext, question = ""): AssistantResponse
   return { source: "heuristic", answer: summary, suggestions: sug.slice(0, 5) };
 }
 
-async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, question: string): Promise<AssistantResponse | null> {
+interface ReactiveAssistantResult {
+  response: AssistantResponse;
+  provider: "anthropic" | "gemini";
+  model: string;
+}
+
+async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, question: string): Promise<ReactiveAssistantResult | null> {
   // SECURITY: allowTampuFallback default-false desde sprint 05/2026
   const { provider, key, source } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) return null;
   const userMessage = `Pregunta del viajero: "${question}"\n\nEstado actual:\n${JSON.stringify(ctx, null, 2)}`;
-  const text = await callLLM(provider, key, {
-    system: SYSTEM_PROMPT,
-    userMessage,
-    maxTokens: MAX_TOKENS_HARD,
-    timeoutMs: 25_000,
-  });
-  if (!text) return null;
+  // withRetry en providers.ts puede throw si Anthropic devuelve 401/5xx persistente.
+  // Wrappeamos para devolver null (que activa el fallback heurístico) en vez de propagar.
+  let rich;
+  try {
+    rich = await callLLMRich(provider, key, {
+      system: SYSTEM_PROMPT,
+      userMessage,
+      maxTokens: MAX_TOKENS_HARD,
+      timeoutMs: 25_000,
+      // Sonnet por default — el asistente reactive maneja contexto pesado
+      // (trip entero, vault, airports). Si en el futuro queremos bajar costo,
+      // baja a haiku acá.
+      model: "sonnet",
+    });
+  } catch (e) {
+    console.warn("[assistant] callLLMRich threw, falling back to heuristic:", e);
+    return null;
+  }
+  if (!rich) return null;
 
-  // Log usage para analytics + circuit breaker
-  const tokensIn = Math.ceil((userMessage.length + SYSTEM_PROMPT.length) / 4);
-  const tokensOut = MAX_TOKENS_HARD;
+  // Log usage REAL del provider (no worst-case)
+  const tokensIn = rich.usage.inputTokens;
+  const tokensOut = rich.usage.outputTokens;
   void recordProxyCall(source === "byok" ? "byok:assistant" : "fallback:assistant", {
     endpoint: "/api/assistant",
     tokensIn,
     tokensOut,
-    costUsd: estimateCostUsd(tokensIn, tokensOut, "sonnet"),
+    costUsd: estimateCostUsd(tokensIn, tokensOut, rich.model),
+    provider: rich.provider,
+    model: rich.model,
   }).catch((e) => captureException(e, { tag: "assistant.record" }));
 
   try {
-    const stripped = text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    const stripped = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
     const parsed = JSON.parse(stripped) as { answer: string; suggestions: Suggestion[] };
-    return { source: "claude", answer: parsed.answer, suggestions: parsed.suggestions || [] };
+    return {
+      response: { source: "claude", answer: parsed.answer, suggestions: parsed.suggestions || [] },
+      provider: rich.provider,
+      model: rich.model,
+    };
   } catch {
+    // JSON parse falló → caller decide qué hacer (cae a heuristic).
     return null;
   }
 }
@@ -344,7 +369,7 @@ export async function POST(req: NextRequest) {
   // (search_destination, find_in_vault, estimate_flight_price, get_trip_summary).
   // Loop hasta end_turn o max 4 iteraciones.
   // SECURITY: allowTampuFallback default-false desde sprint 05/2026
-  const { provider, key } = selectProvider(req, { allowTampuFallback: false });
+  const { provider, key, source: keySource } = selectProvider(req, { allowTampuFallback: false });
   if (provider === "anthropic" && key) {
     const agenticCtx: AgenticContext = {
       trip_name: body.context.trip_name,
@@ -359,12 +384,26 @@ export async function POST(req: NextRequest) {
     };
     const agentic = await runAgenticAssistant(key, body.question, agenticCtx);
     if (agentic) {
+      // Record usage REAL del agentic loop (multi-turn).
+      const tokensIn = agentic.usage.inputTokens;
+      const tokensOut = agentic.usage.outputTokens;
+      void recordProxyCall(keySource === "byok" ? "byok:assistant" : "fallback:assistant", {
+        endpoint: "/api/assistant",
+        tokensIn,
+        tokensOut,
+        costUsd: estimateCostUsd(tokensIn, tokensOut, agentic.model),
+        provider: agentic.provider,
+        model: agentic.model,
+      }).catch((e) => captureException(e, { tag: "assistant.agentic.record" }));
+
       return withCors(
         NextResponse.json({
           source: "claude",
           answer: agentic.answer,
           suggestions: agentic.suggestions,
           tools_used: agentic.tools_used,
+          provider: agentic.provider,
+          model: agentic.model,
         }),
         origin,
       );
@@ -375,7 +414,13 @@ export async function POST(req: NextRequest) {
   // ─── Tier 2: REACTIVO single-shot (Anthropic O Gemini) ───
   // Fallback cuando agentic timeout/error, o user usa Gemini key.
   const llm = await callLLMAssistant(req, body.context, body.question);
-  if (llm) return withCors(NextResponse.json(llm), origin);
+  if (llm) {
+    return withCors(NextResponse.json({
+      ...llm.response,
+      provider: llm.provider,
+      model: llm.model,
+    }), origin);
+  }
 
   // ─── Tier 3: HEURÍSTICO local ───
   // Si no hay key configurada, respondemos con reglas locales.

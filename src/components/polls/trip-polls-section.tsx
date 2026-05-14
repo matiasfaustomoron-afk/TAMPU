@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { PollCard } from "./poll-card";
 import { CreatePoll } from "./create-poll";
 import { getLocalPolls, type Poll } from "@/lib/polls/poll";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * <TripPollsSection /> — sección lista para drop-in en /itinerary o /reservations.
@@ -28,6 +29,7 @@ export function TripPollsSection({
   emptyHint?: string;
   maxShown?: number;
 }) {
+  const { t } = useI18n();
   const [polls, setPolls] = useState<Poll[]>([]);
 
   const refresh = useCallback(() => {
@@ -48,15 +50,15 @@ export function TripPollsSection({
   return (
     <section className="px-4 mt-6">
       <div className="flex items-baseline justify-between mb-2 px-1">
-        <p className="ios-eyebrow !p-0">Encuestas</p>
+        <p className="ios-eyebrow !p-0">{t.polls.title}</p>
         <p className="text-[11px] text-muted-foreground">
-          {polls.length === 0 ? "Decidí con el grupo" : `${polls.length} activa${polls.length === 1 ? "" : "s"}`}
+          {polls.length === 0 ? t.polls.subtitle : `${polls.length} activa${polls.length === 1 ? "" : "s"}`}
         </p>
       </div>
 
       {shown.length === 0 ? (
         <div className="ios-card p-4 text-center text-[13px] text-muted-foreground">
-          {emptyHint || "Sin encuestas todavía. Creá una para decidir entre opciones."}
+          {emptyHint || t.polls.emptyAll}
         </div>
       ) : (
         <div className="space-y-3">
