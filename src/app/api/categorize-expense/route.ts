@@ -10,6 +10,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { selectProvider, callLLM } from "@/lib/ai/providers";
 import { BUDGET_CATEGORIES } from "@/lib/config/constants";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
+
+// ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
+// Hard cap. La task de classify es chiquita, 200 tokens alcanzan y sobran.
+const MAX_TOKENS_HARD = 200;
 
 interface RequestBody {
   description: string;
@@ -40,7 +46,8 @@ Reglas:
 - Si genuinamente no encaja, devolvé "other".`;
 
 export async function POST(req: NextRequest) {
-  const { provider, key } = selectProvider(req);
+  // SECURITY: allowTampuFallback default-false desde sprint 05/2026
+  const { provider, key, source } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) {
     return NextResponse.json({ error: "no_llm_key" }, { status: 503 });
   }
@@ -68,13 +75,23 @@ export async function POST(req: NextRequest) {
   const raw = await callLLM(provider, key, {
     system: SYSTEM_PROMPT,
     userMessage,
-    maxTokens: 200,
+    maxTokens: MAX_TOKENS_HARD,
     timeoutMs: 10_000,
   });
 
   if (!raw) {
     return NextResponse.json({ error: "llm_failed" }, { status: 502 });
   }
+
+  // Log usage para analytics + circuit breaker
+  const tokensIn = Math.ceil((userMessage.length + SYSTEM_PROMPT.length) / 4);
+  const tokensOut = MAX_TOKENS_HARD;
+  void recordProxyCall(source === "byok" ? "byok:categorize" : "fallback:categorize", {
+    endpoint: "/api/categorize-expense",
+    tokensIn,
+    tokensOut,
+    costUsd: estimateCostUsd(tokensIn, tokensOut, "haiku"),
+  }).catch((e) => captureException(e, { tag: "categorize-expense.record" }));
 
   // Extract JSON (modelo puede envolver en markdown ```json ... ```)
   const match = raw.match(/\{[\s\S]*\}/);

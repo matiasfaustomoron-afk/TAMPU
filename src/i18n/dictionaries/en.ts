@@ -454,6 +454,81 @@ const en: Dictionary = {
       readinessBreakdown: "Readiness breakdown",
     },
   },
+
+  welcome: {
+    eyebrow: "Tampu · The travel wallet",
+    title: "Your whole trip,",
+    titleItalic: "nothing slips through.",
+    subtitle:
+      "Tampu keeps your flights, hotels, documents and expenses in one screen. Works offline. Your data lives on your device.",
+    cards: {
+      passes: {
+        title: "Your passes, one view",
+        body: "Forward the airline's email and it shows up as a pass in the app. Apple Wallet ready.",
+      },
+      vault: {
+        title: "Encrypted vault",
+        body: "Passport, visas and insurance saved on your device, accessible offline.",
+      },
+      money: {
+        title: "Expenses without weird accounts",
+        body: "Log an expense in ARS, USD or BRL and the app converts it. No cloud sync.",
+      },
+    },
+    primaryCta: "Load my first trip",
+    secondaryCta: "See demo (example trip)",
+    pasteEmail: "or paste an email to get started",
+    pills: {
+      offline: "Offline",
+      noAccounts: "No accounts",
+      noTracking: "No tracking",
+      wallet: "Apple Wallet",
+      languages: "Spanish + PT",
+    },
+    demoConfirm: {
+      title: "You already have a trip loaded",
+      body: "Entering the demo will replace your current trip with the example. Your real trip is not deleted from your device if you created it with Supabase; in demo mode (localStorage) it will be overwritten. Continue?",
+      accept: "Yes, enter the demo",
+      cancel: "No, keep mine",
+    },
+    demoToast: "Demo loaded · Papua + Seoul 2026",
+  },
+
+  whatsapp: {
+    title: "WhatsApp",
+    subtitle: "Forward confirmations to Tampu",
+    description: "Forward confirmations (flights, hotels, reservations, Airbnb host messages, tour vouchers) via WhatsApp to Tampu and we'll add them to your trip automatically. Brazilian Portuguese also supported.",
+    linkCTA: "Link WhatsApp",
+    linkHint: "We'll send you a code via WhatsApp. Reply with the code in the same chat to confirm.",
+    pending: "Waiting for you to send the code via WhatsApp",
+    pendingHint: "We sent a WhatsApp message with a 6-digit code. Reply with the code in the same chat to finish linking. Expires in 10 minutes.",
+    linked: "Linked",
+    unlink: "Unlink",
+    unlinkConfirm: "Unlink your WhatsApp? Messages already received are kept, but new messages won't be associated with your account.",
+    inboxTitle: "WhatsApp messages",
+    inboxEmpty: "No messages yet. Forward a trip confirmation to the Tampu number to get started.",
+    inboxNoLink: "Link your WhatsApp with Tampu to start receiving confirmations.",
+    statusParsed: "Parsed",
+    statusReceived: "Pending",
+    statusFailed: "Error",
+    statusIgnored: "Ignored",
+    filterAll: "All",
+    filterParsed: "Parsed",
+    filterReceived: "Pending",
+    filterIgnored: "Ignored",
+    seeMessages: "See messages",
+    phoneLabel: "Your phone (with country code)",
+    phonePlaceholder: "+1 555 555 5555",
+    refresh: "Refresh",
+    originalMessage: "Original message",
+    parsedData: "Parsed data",
+  },
+
+  demoBanner: {
+    eyebrow: "Demo mode",
+    message: "You're viewing an example trip. The data isn't yours.",
+    exit: "Exit demo",
+  },
 };
 
 export default en;

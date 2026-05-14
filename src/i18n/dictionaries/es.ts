@@ -521,6 +521,94 @@ const es = {
       readinessBreakdown: "Desglose de preparación",
     },
   },
+
+  // ─── WELCOME ───
+  // Reescritura mayo 2026 (auditor red-team): se elimina founder-data del
+  // hero/CTA/cards. Antes el welcome forzaba un viaje Papúa+Seúl como
+  // ejemplo principal — confundía al nuevo user que no se identificaba con
+  // esos destinos. Ahora el welcome es genérico: tagline corto, 3 cards
+  // de "qué resuelve" concretas, CTA primario al wizard de viajes, demo
+  // como secundario opcional. Voseo argentino, copy natural sin marketing.
+  welcome: {
+    eyebrow: "Tampu · La cartera de viaje",
+    title: "Todo tu viaje,",
+    titleItalic: "sin perder nada.",
+    subtitle:
+      "Tampu junta tus vuelos, hoteles, documentos y gastos en una sola pantalla. Funciona sin internet. Tus datos viven en tu dispositivo.",
+    cards: {
+      passes: {
+        title: "Tus pases en una vista",
+        body: "Reenviás el email de la aerolínea y aparece como pase en la app. Listo para Apple Wallet.",
+      },
+      vault: {
+        title: "Vault cifrado",
+        body: "Pasaporte, visas y seguros guardados en tu dispositivo, accesibles offline.",
+      },
+      money: {
+        title: "Gastos sin cuentas raras",
+        body: "Cargás un gasto en ARS, USD o BRL y la app hace la conversión. Sin sincronización por la nube.",
+      },
+    },
+    primaryCta: "Cargar mi primer viaje",
+    secondaryCta: "Ver demo (viaje de ejemplo)",
+    pasteEmail: "o pegá un email para empezar",
+    pills: {
+      offline: "Offline",
+      noAccounts: "Sin cuentas",
+      noTracking: "Sin tracking",
+      wallet: "Apple Wallet",
+      languages: "Español + PT",
+    },
+    demoConfirm: {
+      title: "Ya tenés un viaje cargado",
+      body: "Si entrás al demo, vamos a reemplazar el viaje actual con el de ejemplo. Tu viaje real no se borra del dispositivo si lo creaste con Supabase; en modo demo (localStorage) sí se sobrescribe. ¿Continuar?",
+      accept: "Sí, entrar al demo",
+      cancel: "No, quedarme en el mío",
+    },
+    demoToast: "Demo cargada · Papúa + Seúl 2026",
+  },
+
+  // ─── WHATSAPP (mayo 2026) ───
+  // Diferenciador competitivo: ningún competidor LatAm tiene WhatsApp
+  // ingestion. Strings en voseo argentino.
+  whatsapp: {
+    title: "WhatsApp",
+    subtitle: "Reenviá confirmaciones a Tampu",
+    description: "Reenviá confirmaciones (vuelos, hoteles, reservas, mensajes del host de Airbnb, vouchers de tour) por WhatsApp a Tampu y las agrego automáticamente a tu viaje. Funciona también con mensajes en portugués brasileño.",
+    linkCTA: "Vincular WhatsApp",
+    linkHint: "Te mandamos un código por WhatsApp. Respondé con el código en el mismo chat para confirmar.",
+    pending: "Esperando que mandes el código por WhatsApp",
+    pendingHint: "Te enviamos un mensaje por WhatsApp con un código de 6 dígitos. Respondé con el código en el mismo chat para terminar la vinculación. Vence en 10 minutos.",
+    linked: "Vinculado",
+    unlink: "Desvincular",
+    unlinkConfirm: "¿Desvincular tu WhatsApp? Los mensajes que ya recibimos se mantienen, pero mensajes nuevos no se asocian a tu cuenta.",
+    inboxTitle: "Mensajes WhatsApp",
+    inboxEmpty: "Todavía no recibí mensajes. Mandá una confirmación de viaje al número Tampu para empezar.",
+    inboxNoLink: "Vinculá tu WhatsApp con Tampu para empezar a recibir confirmaciones.",
+    statusParsed: "Parseado",
+    statusReceived: "Pendiente",
+    statusFailed: "Error",
+    statusIgnored: "Ignorado",
+    filterAll: "Todos",
+    filterParsed: "Parseados",
+    filterReceived: "Pendientes",
+    filterIgnored: "Ignorados",
+    seeMessages: "Ver mensajes",
+    phoneLabel: "Tu número (con código de país)",
+    phonePlaceholder: "+54 9 11 4040 4040",
+    refresh: "Refrescar",
+    originalMessage: "Mensaje original",
+    parsedData: "Datos parseados",
+  },
+
+  // ─── DEMO BANNER ───
+  // Chip global superior visible mientras `tampu_demo_mode=true`. Se monta
+  // en app-layout y se auto-oculta en /welcome + /passcode.
+  demoBanner: {
+    eyebrow: "Modo demo",
+    message: "Estás viendo un viaje de ejemplo. Los datos no son tuyos.",
+    exit: "Salir del demo",
+  },
 } as const;
 
 export default es;

@@ -1,16 +1,25 @@
 // ─── Rate limiter para el proxy IA de Tampu ───
 //
-// MVP sin Redis ni Upstash:
-//   - Storage primario: in-memory LRU `Map<identifier, RateBucket>`.
-//     Single-instance Vercel — se resetea en cold start. Aceptable en MVP
-//     porque los caps son generosos (50/mes) y los cold starts no son
-//     suficientemente frecuentes para que un user lo explote.
-//   - Storage secundario (opcional): tabla Supabase `ai_proxy_usage`
-//     (migration 00022, todavía no aplicada — graceful degrade si no existe).
+// Rewrite Sprint Seguridad 05/2026: la fuente de verdad ahora es Supabase
+// (`ai_proxy_usage` — migration 00022). El LRU in-memory se mantiene como
+// **L1 cache** (5s TTL) para evitar pegarle a Supabase en cada request.
 //
-// Identifier:
-//   - User auth (Supabase): `user:<uuid>` — cuenta unique por usuario logueado.
-//   - Anonymous: `ip:<sha256(ip + salt)>` — hash para no loguear IPs raw.
+// Por qué Supabase y no Upstash/Redis:
+//   - Ya tenemos Supabase (no agregamos otro proveedor de infra).
+//   - Postgres tiene precisión transaccional para los counters (no UB).
+//   - Las queries son baratas (count + sum por device_fingerprint/user_id).
+//
+// Caps duros:
+//   - Anonymous (sólo device fingerprint): 20/día y 100/mes
+//   - Anonymous sin fingerprint (header faltante): 10/día (más estricto)
+//   - Auth (Supabase session): 50/mes en proxy mode
+//   - BYOK: bypass total (no pasa por proxy)
+//
+// Circuit breaker global:
+//   - Si SUM(cost_usd) del día actual > AI_DAILY_BUDGET_USD (default 50),
+//     devolvemos `daily_budget_reached` y logueamos a Sentry severity=error.
+//   - Esto protege la key TAMPU_ANTHROPIC_KEY de un attack scattered (muchos
+//     fingerprints distintos cada uno bajo el cap individual).
 //
 // Decisión de policy: ver PROXY-DESIGN.md sección "Rate limit policy".
 
@@ -18,52 +27,60 @@ import type { NextRequest } from "next/server";
 import { createHash } from "crypto";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createSupabaseService } from "@/lib/supabase/service";
+import { captureException, captureMessage } from "@/lib/observability/sentry";
 
 // ─── Tipos ───────────────────────────────────────────────────────────
 
-export type RateLimitTier = "anonymous" | "auth" | "byok" | "pro";
+export type RateLimitTier = "anonymous" | "anonymous_strict" | "auth" | "byok" | "pro";
 
 export interface RateLimitDecision {
   /** Si el caller puede proceder con la llamada IA. */
   ok: boolean;
   /** Tier que aplicó (para logging). */
   tier: RateLimitTier;
-  /** Identifier opaco (para debugging). */
+  /** Identifier opaco (para debugging + record). */
   identifier: string;
+  /** Endpoint del request (para tracking). */
+  endpoint: string;
   /** Si !ok: segundos hasta poder reintentar. */
   resetIn?: number;
   /** Si !ok: motivo legible para el client. */
-  reason?: "daily_cap" | "monthly_cap" | "disabled";
+  reason?: "daily_cap" | "monthly_cap" | "disabled" | "daily_budget_reached";
   /** Uso actual del mes (para UI "12/50 calls"). */
   monthly: { used: number; cap: number };
   /** Uso del día (para feedback inmediato). */
   daily: { used: number; cap: number };
 }
 
-interface RateBucket {
+interface UsageSnapshot {
   /** Calls hoy (UTC). */
   countDay: number;
   /** Calls en el mes calendario (UTC). */
   countMonth: number;
-  /** ISO date `YYYY-MM-DD` del último reset diario. */
-  dayKey: string;
-  /** ISO `YYYY-MM` del último reset mensual. */
-  monthKey: string;
+  /** Cost USD acumulado HOY across ALL identifiers (circuit breaker). */
+  dailyBudgetUsd: number;
+  /** Epoch ms cuando se hidrató. Para TTL. */
+  cachedAt: number;
 }
 
 // ─── Caps por tier ───────────────────────────────────────────────────
 
 const CAPS = {
   anonymous: { day: 20, month: 100 },
-  auth:      { day: 50, month: 50 }, // 50/mes total — el day cap también es 50 para no abrir backdoor
+  anonymous_strict: { day: 10, month: 50 }, // sin fingerprint = más estricto
+  auth:      { day: 50, month: 50 },
   byok:      { day: Infinity, month: Infinity },
   pro:       { day: Infinity, month: Infinity },
 } as const;
 
-// ─── In-memory store ─────────────────────────────────────────────────
+// ─── L1 cache (in-memory, 5s TTL) ────────────────────────────────────
 
-const MAX_ENTRIES = 5000; // LRU cap — más allá vamos descartando los más viejos
-const store = new Map<string, RateBucket>();
+const L1_TTL_MS = 5_000;
+const L1_MAX_ENTRIES = 5000;
+const l1Cache = new Map<string, UsageSnapshot>();
+
+/** Cache global del daily budget para evitar query SUM en cada request. */
+let dailyBudgetCache: { value: number; cachedAt: number; day: string } | null = null;
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
@@ -72,39 +89,27 @@ function monthKey(): string {
   return new Date().toISOString().slice(0, 7); // YYYY-MM UTC
 }
 
-function getBucket(identifier: string): RateBucket {
-  const day = todayKey();
-  const month = monthKey();
-  const existing = store.get(identifier);
-  if (existing) {
-    // Reset daily si cambió el día
-    if (existing.dayKey !== day) { existing.countDay = 0; existing.dayKey = day; }
-    if (existing.monthKey !== month) { existing.countMonth = 0; existing.monthKey = month; }
-    // Touch (LRU): re-insert para que quede al final
-    store.delete(identifier);
-    store.set(identifier, existing);
-    return existing;
+function isCacheFresh(snap: UsageSnapshot | undefined): snap is UsageSnapshot {
+  return !!snap && Date.now() - snap.cachedAt < L1_TTL_MS;
+}
+
+function setL1(key: string, snap: UsageSnapshot): void {
+  if (l1Cache.size >= L1_MAX_ENTRIES) {
+    const firstKey = l1Cache.keys().next().value;
+    if (firstKey) l1Cache.delete(firstKey);
   }
-  // Crear nuevo + evict si pasamos el límite
-  if (store.size >= MAX_ENTRIES) {
-    const firstKey = store.keys().next().value;
-    if (firstKey) store.delete(firstKey);
-  }
-  const fresh: RateBucket = { countDay: 0, countMonth: 0, dayKey: day, monthKey: month };
-  store.set(identifier, fresh);
-  return fresh;
+  l1Cache.set(key, snap);
 }
 
 // ─── Identifier resolution ───────────────────────────────────────────
 
 const IP_SALT = process.env.AI_PROXY_IP_SALT || "tampu-default-salt-change-me";
 
-function hashIp(ip: string): string {
-  return createHash("sha256").update(ip + IP_SALT).digest("hex").slice(0, 16);
+function hashFingerprint(raw: string): string {
+  return createHash("sha256").update(raw + IP_SALT).digest("hex").slice(0, 32);
 }
 
 function getClientIp(req: NextRequest): string {
-  // Vercel sets x-forwarded-for. Tomamos el primer hop (cliente real).
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
   const realIp = req.headers.get("x-real-ip");
@@ -113,97 +118,188 @@ function getClientIp(req: NextRequest): string {
 }
 
 /**
- * Resuelve el identifier + tier del request:
- *   - Si hay user Supabase logueado → `user:<uuid>` tier `auth` (o `pro` si suscripción activa).
- *   - Si no → `ip:<hash>` tier `anonymous`.
+ * Lee el `x-device-fingerprint` header (fingerprintjs open-source en el cliente).
+ * Si está, devolvemos un identifier estable basado en el device. Si no, caemos a
+ * IP hash y al tier más estricto.
  */
-async function resolveIdentity(req: NextRequest): Promise<{ identifier: string; tier: RateLimitTier }> {
-  // Intentar leer user de Supabase (cookies)
+async function resolveIdentity(
+  req: NextRequest,
+): Promise<{ identifier: string; tier: RateLimitTier; deviceFingerprint: string }> {
+  // 1. Auth Supabase tiene prioridad (cookie session)
   try {
     const supa = await createSupabaseServer();
     if (supa) {
       const { data } = await supa.auth.getUser();
       if (data?.user) {
-        // TODO Stripe: chequear `profiles.subscription_tier === "pro"` y devolver tier "pro"
-        return { identifier: `user:${data.user.id}`, tier: "auth" };
+        const fp = `user:${data.user.id}`;
+        return { identifier: fp, tier: "auth", deviceFingerprint: fp };
       }
     }
   } catch {
-    // Supabase no configurado o cookies invalidas — caemos a IP
+    // ignore — caemos a anonymous
   }
+
+  // 2. Anonymous con device fingerprint del header
+  const rawFp = req.headers.get("x-device-fingerprint");
+  if (rawFp && rawFp.length >= 8 && rawFp.length <= 256) {
+    const fp = `fp:${hashFingerprint(rawFp)}`;
+    return { identifier: fp, tier: "anonymous", deviceFingerprint: fp };
+  }
+
+  // 3. Anonymous sin fingerprint — tier strict, identifier por IP hash
   const ip = getClientIp(req);
-  return { identifier: `ip:${hashIp(ip)}`, tier: "anonymous" };
+  const fp = `ip:${hashFingerprint(ip)}`;
+  return { identifier: fp, tier: "anonymous_strict", deviceFingerprint: fp };
 }
 
-// ─── Supabase persistence (opcional, graceful) ───────────────────────
+// ─── Supabase queries ────────────────────────────────────────────────
 //
-// Tabla esperada (migration TODO):
+// Schema esperado (creado por Agent C en migration 00022):
 //   create table ai_proxy_usage (
-//     identifier text primary key,
-//     count_day int not null default 0,
-//     count_month int not null default 0,
-//     day_key text not null,
-//     month_key text not null,
-//     updated_at timestamptz default now()
+//     id bigserial primary key,
+//     device_fingerprint text not null,
+//     endpoint text not null,
+//     tokens_in int not null default 0,
+//     tokens_out int not null default 0,
+//     cost_usd numeric(10,6) not null default 0,
+//     created_at timestamptz not null default now()
 //   );
-//
-// Si la tabla no existe, todas las llamadas devuelven `null` y caemos
-// al in-memory store.
+//   create index on ai_proxy_usage (device_fingerprint, created_at);
+//   create index on ai_proxy_usage (created_at);
 
-async function loadFromSupabase(identifier: string): Promise<RateBucket | null> {
+async function loadUsageFromSupabase(identifier: string): Promise<UsageSnapshot | null> {
   const supa = createSupabaseService();
   if (!supa) return null;
   try {
-    const { data, error } = await supa
+    const day = todayKey();
+    const monthStart = `${monthKey()}-01T00:00:00Z`;
+    const dayStart = `${day}T00:00:00Z`;
+
+    const { data: dayRows, error: dayErr } = await supa
       .from("ai_proxy_usage")
-      .select("count_day, count_month, day_key, month_key")
-      .eq("identifier", identifier)
-      .maybeSingle();
-    if (error || !data) return null;
+      .select("id", { count: "exact", head: false })
+      .eq("device_fingerprint", identifier)
+      .gte("created_at", dayStart);
+    if (dayErr) return null;
+
+    const { data: monthRows, error: monthErr } = await supa
+      .from("ai_proxy_usage")
+      .select("id", { count: "exact", head: false })
+      .eq("device_fingerprint", identifier)
+      .gte("created_at", monthStart);
+    if (monthErr) return null;
+
     return {
-      countDay: data.count_day as number,
-      countMonth: data.count_month as number,
-      dayKey: data.day_key as string,
-      monthKey: data.month_key as string,
+      countDay: dayRows?.length ?? 0,
+      countMonth: monthRows?.length ?? 0,
+      dailyBudgetUsd: 0, // se hidrata aparte
+      cachedAt: Date.now(),
     };
-  } catch {
+  } catch (e) {
+    captureException(e, { tag: "rate-limit.loadUsage", level: "warning" });
     return null;
   }
 }
 
-async function persistToSupabase(identifier: string, bucket: RateBucket): Promise<void> {
-  const supa = createSupabaseService();
-  if (!supa) return;
-  try {
-    await supa
-      .from("ai_proxy_usage")
-      .upsert({
-        identifier,
-        count_day: bucket.countDay,
-        count_month: bucket.countMonth,
-        day_key: bucket.dayKey,
-        month_key: bucket.monthKey,
-        updated_at: new Date().toISOString(),
-      });
-  } catch {
-    // tabla no existe o error de red — ignoramos, el in-memory ya es la fuente de verdad
+/**
+ * Suma cost_usd del día actual a través de TODOS los identifiers — circuit
+ * breaker global. Cacheado en memoria por L1_TTL_MS para no quemar Supabase.
+ */
+async function getDailyBudgetSpent(): Promise<number> {
+  const day = todayKey();
+  if (dailyBudgetCache && dailyBudgetCache.day === day && Date.now() - dailyBudgetCache.cachedAt < L1_TTL_MS) {
+    return dailyBudgetCache.value;
   }
+
+  const supa = createSupabaseService();
+  if (!supa) {
+    // Sin Supabase no podemos evaluar — devolvemos 0 y dejamos pasar.
+    // El operator debería ver el warning una sola vez en logs y configurar.
+    if (!dailyBudgetCache) {
+      captureMessage("rate-limit: Supabase service client not configured — daily budget circuit breaker DISABLED", {
+        tag: "rate-limit.budget",
+        level: "warning",
+      });
+    }
+    dailyBudgetCache = { value: 0, cachedAt: Date.now(), day };
+    return 0;
+  }
+
+  try {
+    const dayStart = `${day}T00:00:00Z`;
+    const { data, error } = await supa
+      .from("ai_proxy_usage")
+      .select("cost_usd")
+      .gte("created_at", dayStart);
+    if (error) {
+      dailyBudgetCache = { value: 0, cachedAt: Date.now(), day };
+      return 0;
+    }
+    const total = (data ?? []).reduce((acc, row) => acc + Number((row as { cost_usd: number }).cost_usd ?? 0), 0);
+    dailyBudgetCache = { value: total, cachedAt: Date.now(), day };
+    return total;
+  } catch (e) {
+    captureException(e, { tag: "rate-limit.budget", level: "warning" });
+    dailyBudgetCache = { value: 0, cachedAt: Date.now(), day };
+    return 0;
+  }
+}
+
+/**
+ * Circuit breaker global. Devuelve true si el budget diario está agotado.
+ * Llamado antes de cada request al provider IA.
+ */
+export async function checkDailyBudget(): Promise<{ exceeded: boolean; spentUsd: number; capUsd: number }> {
+  const capUsd = Number(process.env.AI_DAILY_BUDGET_USD || "50");
+  const spentUsd = await getDailyBudgetSpent();
+  const exceeded = spentUsd >= capUsd;
+  if (exceeded) {
+    captureMessage(`AI daily budget reached: USD ${spentUsd.toFixed(2)} >= cap USD ${capUsd}`, {
+      tag: "rate-limit.budget",
+      level: "error",
+      extra: { spentUsd, capUsd },
+    });
+  }
+  return { exceeded, spentUsd, capUsd };
 }
 
 // ─── API pública ─────────────────────────────────────────────────────
 
 /**
- * Chequea si el caller puede usar el proxy IA. NO incrementa el contador.
- * Para incrementar (after a successful call), usar `recordProxyCall()`.
+ * Chequea si el caller puede usar el proxy IA. NO incrementa el contador
+ * (eso lo hace `recordProxyCall` después de un éxito upstream).
+ *
+ * Orden de chequeo:
+ *   1. proxy habilitado (TAMPU_ANTHROPIC_KEY) — si no, "disabled"
+ *   2. circuit breaker global (daily budget)
+ *   3. caps por tier (anonymous/auth)
  */
-export async function canCallProxy(req: NextRequest): Promise<RateLimitDecision> {
-  // Si TAMPU_ANTHROPIC_KEY no está configurada, el proxy está deshabilitado entirely.
+export async function canCallProxy(req: NextRequest, endpoint = "/api/ai-proxy"): Promise<RateLimitDecision> {
   if (!process.env.TAMPU_ANTHROPIC_KEY) {
     return {
       ok: false,
       tier: "anonymous",
       identifier: "disabled",
+      endpoint,
       reason: "disabled",
+      monthly: { used: 0, cap: 0 },
+      daily: { used: 0, cap: 0 },
+    };
+  }
+
+  // Circuit breaker GLOBAL — antes que caps individuales
+  const budget = await checkDailyBudget();
+  if (budget.exceeded) {
+    const now = new Date();
+    const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const resetIn = Math.max(60, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
+    return {
+      ok: false,
+      tier: "anonymous",
+      identifier: "circuit-breaker",
+      endpoint,
+      reason: "daily_budget_reached",
+      resetIn,
       monthly: { used: 0, cap: 0 },
       daily: { used: 0, cap: 0 },
     };
@@ -211,65 +307,100 @@ export async function canCallProxy(req: NextRequest): Promise<RateLimitDecision>
 
   const { identifier, tier } = await resolveIdentity(req);
 
-  // Hidratar desde Supabase si está disponible (sync con otras instances)
-  const persisted = await loadFromSupabase(identifier);
-  if (persisted) {
-    const cur = todayKey(), mon = monthKey();
-    if (persisted.dayKey !== cur) { persisted.countDay = 0; persisted.dayKey = cur; }
-    if (persisted.monthKey !== mon) { persisted.countMonth = 0; persisted.monthKey = mon; }
-    store.set(identifier, persisted);
+  // L1 cache
+  let snap = l1Cache.get(identifier);
+  if (!isCacheFresh(snap)) {
+    const fromSupa = await loadUsageFromSupabase(identifier);
+    if (fromSupa) {
+      snap = fromSupa;
+      setL1(identifier, snap);
+    } else if (!snap) {
+      // Sin Supabase y sin cache → asumimos fresh (degradado pero seguro,
+      // los caps siguen aplicando vía L1 cache durante esta sesión).
+      snap = { countDay: 0, countMonth: 0, dailyBudgetUsd: 0, cachedAt: Date.now() };
+      setL1(identifier, snap);
+    }
   }
 
-  const bucket = getBucket(identifier);
   const caps = CAPS[tier];
 
-  if (bucket.countMonth >= caps.month) {
-    // Reset al inicio del mes próximo
+  if (snap.countMonth >= caps.month) {
     const now = new Date();
     const firstOfNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     const resetIn = Math.max(60, Math.floor((firstOfNextMonth.getTime() - now.getTime()) / 1000));
     return {
-      ok: false, tier, identifier,
+      ok: false, tier, identifier, endpoint,
       resetIn, reason: "monthly_cap",
-      monthly: { used: bucket.countMonth, cap: caps.month },
-      daily: { used: bucket.countDay, cap: caps.day === Infinity ? -1 : caps.day },
+      monthly: { used: snap.countMonth, cap: caps.month },
+      daily: { used: snap.countDay, cap: caps.day === Infinity ? -1 : caps.day },
     };
   }
-  if (bucket.countDay >= caps.day) {
-    // Reset a medianoche UTC
+  if (snap.countDay >= caps.day) {
     const now = new Date();
     const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
     const resetIn = Math.max(60, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
     return {
-      ok: false, tier, identifier,
+      ok: false, tier, identifier, endpoint,
       resetIn, reason: "daily_cap",
-      monthly: { used: bucket.countMonth, cap: caps.month },
-      daily: { used: bucket.countDay, cap: caps.day },
+      monthly: { used: snap.countMonth, cap: caps.month },
+      daily: { used: snap.countDay, cap: caps.day },
     };
   }
 
   return {
-    ok: true, tier, identifier,
-    monthly: { used: bucket.countMonth, cap: caps.month === Infinity ? -1 : caps.month },
-    daily: { used: bucket.countDay, cap: caps.day === Infinity ? -1 : caps.day },
+    ok: true, tier, identifier, endpoint,
+    monthly: { used: snap.countMonth, cap: caps.month === Infinity ? -1 : caps.month },
+    daily: { used: snap.countDay, cap: caps.day === Infinity ? -1 : caps.day },
   };
 }
 
 /**
- * Incrementa contadores después de una llamada exitosa al provider IA.
- * No-op si el tier es unlimited (byok/pro) — esos no pasan por el proxy.
+ * Registra el uso después de una llamada upstream exitosa. Persiste a Supabase
+ * (fuente de verdad) y bumpa el L1 cache en paralelo. Si Supabase no está,
+ * sólo bumpa L1 y registra un warning una vez.
+ *
+ * Llamar SIEMPRE — incluso BYOK — para tener analytics + circuit breaker
+ * coherente cross-tenant.
  */
-export async function recordProxyCall(identifier: string): Promise<void> {
-  const bucket = getBucket(identifier);
-  bucket.countDay += 1;
-  bucket.countMonth += 1;
-  // Fire-and-forget persistencia. Si Supabase no está, no-op.
-  void persistToSupabase(identifier, bucket);
+export async function recordProxyCall(
+  identifier: string,
+  meta: {
+    endpoint: string;
+    tokensIn: number;
+    tokensOut: number;
+    costUsd: number;
+  },
+): Promise<void> {
+  // Bump L1 inmediato (latencia 0 para la siguiente request en la misma instancia)
+  const snap = l1Cache.get(identifier);
+  if (snap) {
+    snap.countDay += 1;
+    snap.countMonth += 1;
+    snap.cachedAt = Date.now();
+  }
+  // Bump dailyBudgetCache también — evita que un attacker burlee el circuit
+  // breaker en la ventana de 5s antes del próximo refresh de Supabase
+  if (dailyBudgetCache && dailyBudgetCache.day === todayKey()) {
+    dailyBudgetCache.value += meta.costUsd;
+  }
+
+  const supa = createSupabaseService();
+  if (!supa) return;
+  try {
+    await supa.from("ai_proxy_usage").insert({
+      device_fingerprint: identifier,
+      endpoint: meta.endpoint,
+      tokens_in: Math.max(0, Math.floor(meta.tokensIn)),
+      tokens_out: Math.max(0, Math.floor(meta.tokensOut)),
+      cost_usd: Math.max(0, Number(meta.costUsd.toFixed(6))),
+    });
+  } catch (e) {
+    captureException(e, { tag: "rate-limit.record", level: "warning", extra: { identifier, ...meta } });
+  }
 }
 
 /**
  * Lectura standalone del uso (para mostrar "12/50 calls este mes" en /settings).
- * No requiere request — toma user/IP del contexto Supabase si existe.
  */
 export async function getCurrentUsage(req: NextRequest): Promise<{
   tier: RateLimitTier;
@@ -279,19 +410,40 @@ export async function getCurrentUsage(req: NextRequest): Promise<{
 }> {
   const enabled = Boolean(process.env.TAMPU_ANTHROPIC_KEY);
   const { identifier, tier } = await resolveIdentity(req);
-  const persisted = await loadFromSupabase(identifier);
-  if (persisted) store.set(identifier, persisted);
-  const bucket = getBucket(identifier);
+  let snap = l1Cache.get(identifier);
+  if (!isCacheFresh(snap)) {
+    const fromSupa = await loadUsageFromSupabase(identifier);
+    if (fromSupa) {
+      snap = fromSupa;
+      setL1(identifier, snap);
+    }
+  }
+  snap ??= { countDay: 0, countMonth: 0, dailyBudgetUsd: 0, cachedAt: Date.now() };
   const caps = CAPS[tier];
   return {
     tier,
     enabled,
-    monthly: { used: bucket.countMonth, cap: caps.month === Infinity ? -1 : caps.month },
-    daily: { used: bucket.countDay, cap: caps.day === Infinity ? -1 : caps.day },
+    monthly: { used: snap.countMonth, cap: caps.month === Infinity ? -1 : caps.month },
+    daily: { used: snap.countDay, cap: caps.day === Infinity ? -1 : caps.day },
   };
 }
 
-/** Para tests: limpia el store en memoria. */
+/** Para tests: limpia el store en memoria (L1 cache + budget cache). */
 export function _resetRateLimitStore(): void {
-  store.clear();
+  l1Cache.clear();
+  dailyBudgetCache = null;
+}
+
+/**
+ * Helper compartido para estimar costo USD de una call. Usa los precios de
+ * Anthropic Haiku 4.5 (mayo 2026):
+ *   - input: USD 1 / 1M tokens = USD 0.000001 / token
+ *   - output: USD 5 / 1M tokens = USD 0.000005 / token
+ * Si en el futuro cambiamos a Sonnet, ajustar acá.
+ */
+export function estimateCostUsd(tokensIn: number, tokensOut: number, model: "haiku" | "sonnet" = "haiku"): number {
+  if (model === "sonnet") {
+    return tokensIn * 0.000003 + tokensOut * 0.000015;
+  }
+  return tokensIn * 0.000001 + tokensOut * 0.000005;
 }

@@ -18,14 +18,18 @@ export interface LLMCallOpts {
 
 export interface SelectProviderOpts {
   /**
-   * Si true (default), `TAMPU_ANTHROPIC_KEY` (la key server-side que paga
-   * Tampu) se usa como fallback cuando no hay BYOK. ATENCIÓN: este path
-   * NO está rate-limitado en `selectProvider` mismo — el rate limit vive en
+   * Si true, `TAMPU_ANTHROPIC_KEY` (la key server-side que paga Tampu) se usa
+   * como fallback cuando no hay BYOK. ATENCIÓN: este path NO está
+   * rate-limitado en `selectProvider` mismo — el rate limit vive en
    * `/api/ai-proxy` (ver `src/lib/ai/rate-limit.ts`).
    *
+   * Default SEGURO desde el sprint seguridad 05/2026: `false`. Sólo
+   * `/api/ai-proxy` puede pasar `true` (porque internamente llama
+   * `canCallProxy()` + `checkDailyBudget()` antes del upstream).
+   *
    * Endpoints que invocan IA con contexto pesado (vault entero, trip entero,
-   * docs PDF de varios MB) deberían pasar `false` para forzar BYOK o
-   * heurística local, evitando que un user anónimo nos drene tokens caros.
+   * docs PDF de varios MB) NO deben tocar `allowTampuFallback` — el default
+   * los protege.
    */
   allowTampuFallback?: boolean;
 }
@@ -34,7 +38,8 @@ export function selectProvider(
   req: NextRequest,
   opts: SelectProviderOpts = {},
 ): { provider: Provider; key: string | null; source: "byok" | "tampu" | "env" | "none" } {
-  const { allowTampuFallback = true } = opts;
+  // SECURITY: default safe — sólo opt-in explícito habilita el fallback Tampu.
+  const { allowTampuFallback = false } = opts;
 
   // 1. BYOK del user (header). Tiene prioridad absoluta — preserva privacy
   //    (datos van directo a Anthropic/Gemini sin pasar por nuestra infra).

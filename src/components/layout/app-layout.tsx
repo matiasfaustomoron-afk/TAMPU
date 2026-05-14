@@ -11,6 +11,7 @@ import { ToastHost } from "@/components/ios/toast";
 import { AssistantFab } from "@/components/command/assistant-fab";
 import { MoreFab } from "@/components/command/more-fab";
 import { TaskRemindersSync } from "@/components/task-reminders-sync";
+import { DemoBanner } from "@/components/layout/demo-banner";
 import { haptic } from "@/lib/native/platform";
 
 // ─── Tab bar — 5 primary destinations, iOS pattern ───
@@ -119,6 +120,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background relative">
+      {/* Demo banner — visible solo cuando tampu_demo_mode=true. Sticky top.
+          Se auto-oculta en /welcome y /passcode. */}
+      <DemoBanner />
+
       {/* Main scroll area — mobile-first container even on desktop */}
       <main className="mx-auto max-w-md sm:max-w-lg pb-32 safe-area-top">
         {children}

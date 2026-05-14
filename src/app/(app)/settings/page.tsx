@@ -21,10 +21,11 @@ import { isTrackingEnabled, setTrackingEnabled } from "@/lib/native/platform";
 import { areTaskRemindersEnabled, setTaskRemindersEnabled } from "@/lib/task-reminders";
 import { getUserApiKey, setUserApiKey, detectProvider, hasLegacyPlainApiKey, hasEncryptedApiKey, migrateLegacyApiKey } from "@/lib/ai/user-key";
 import { fetchProxyUsage } from "@/lib/ai/proxy";
+import { useTampuPlus, invalidateTampuPlusCache } from "@/lib/billing/use-tampu-plus";
 import { hasPasscode, isUnlocked, lock as lockApp, onLockChange } from "@/lib/crypto/passcode";
 import { countLegacyPlainVaultBlobs, migrateLegacyVaultToEncrypted } from "@/lib/vault/storage";
 import Link from "next/link";
-import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown } from "lucide-react";
+import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown, Heart, MessageCircle } from "lucide-react";
 import { useRef } from "react";
 import { downloadBackup, importBackup } from "@/lib/backup";
 import { getBriefConfig, setBriefConfig, type DailyBriefConfig } from "@/lib/daily-brief";
@@ -37,6 +38,8 @@ import {
   getEvents,
   type TelemetryConsent,
 } from "@/lib/analytics";
+import { Turnstile } from "@/components/security/turnstile";
+import { verifyTurnstileToken } from "@/lib/security/verify-turnstile";
 
 export default function SettingsPage() {
   const { t, locale, setLocale, formatCurrency } = useI18n();
@@ -47,6 +50,72 @@ export default function SettingsPage() {
   const { data: documents } = useDocuments(trip?.id);
   const { data: budget } = useBudgetSummary();
   const [pdfBusy, setPdfBusy] = useState(false);
+
+  // ─── Tampu+ Lifetime status ────────────────────────────────────────
+  // Resuelve si el user ya compró el upgrade lifetime (USD 29). Cache 5min.
+  const { isPlus, loading: plusLoading, purchase: plusPurchase, refresh: refreshPlus } = useTampuPlus();
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  const handleStartCheckout = async () => {
+    setCheckoutBusy(true);
+    try {
+      const res = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: undefined, // se completa server-side desde la sesión si existe
+          email: undefined,
+          locale,
+        }),
+      });
+      const json = (await res.json()) as { url?: string; error?: string; hint?: string };
+      if (!res.ok || !json.url) {
+        toast(
+          json.error === "stripe_not_configured"
+            ? "El checkout no está configurado todavía en este deploy."
+            : `No pudimos iniciar el checkout: ${json.error ?? "error desconocido"}`,
+          "error",
+        );
+        setCheckoutBusy(false);
+        return;
+      }
+      window.location.href = json.url;
+    } catch (err) {
+      toast(`Error: ${(err as Error).message}`, "error");
+      setCheckoutBusy(false);
+    }
+  };
+
+  const handleRestorePurchase = async () => {
+    invalidateTampuPlusCache();
+    await refreshPlus();
+    toast(isPlus ? "Compra restaurada · sos Tampu+" : "No encontramos una compra activa con tu cuenta", isPlus ? "success" : "info");
+  };
+
+  // Si el user vuelve de Stripe con ?upgrade=success, refrescá el estado
+  // del lifetime después de un momento (el webhook tarda 1-2s en procesar).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const upgrade = params.get("upgrade");
+    if (upgrade === "success") {
+      toast("¡Gracias! Procesando tu compra…", "success");
+      // Reintento simple: 2s, 5s.
+      const t1 = setTimeout(() => { invalidateTampuPlusCache(); void refreshPlus(); }, 2000);
+      const t2 = setTimeout(() => { invalidateTampuPlusCache(); void refreshPlus(); }, 5000);
+      // Limpiar el query param para que no re-dispare al re-renderizar.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("upgrade");
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", url.toString());
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    } else if (upgrade === "cancelled") {
+      toast("Compra cancelada. Tampu sigue funcionando gratis igual.", "info");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("upgrade");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [refreshPlus]);
 
   const handleExportPDF = () => {
     if (!trip) return;
@@ -77,6 +146,8 @@ export default function SettingsPage() {
   const [apiKey, setApiKeyState] = useState<string>(() => getUserApiKey() || "");
   const [showKey, setShowKey] = useState(false);
   const [keyJustSaved, setKeyJustSaved] = useState(false);
+  // Turnstile token para el BYOK paste (anti-bot abuse del flow de keys)
+  const [byokTurnstileToken, setByokTurnstileToken] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const [brief, setBrief] = useState<DailyBriefConfig>(() => getBriefConfig());
@@ -104,6 +175,96 @@ export default function SettingsPage() {
   useEffect(() => {
     void fetchProxyUsage().then(u => setProxyUsage(u));
   }, [aiMode, keyJustSaved]); // refetch al cambiar de modo o guardar key
+
+  // ─── WhatsApp linking (mayo 2026) ────────────────────────────────────────
+  // Diferenciador estructural Tampu vs competidores: ninguno tiene WhatsApp
+  // ingestion. El user vincula su número, luego reenvía confirmaciones de
+  // viaje a un número Tampu y las parseamos con Claude Haiku.
+  type WhatsAppLinkState =
+    | { kind: "loading" }
+    | { kind: "not-linked" }
+    | { kind: "pending"; phone_e164: string; expires_at: string | null }
+    | { kind: "linked"; phone_e164: string; verified_at: string };
+  const [waState, setWaState] = useState<WhatsAppLinkState>({ kind: "loading" });
+  const [waPhoneInput, setWaPhoneInput] = useState("");
+  const [waBusy, setWaBusy] = useState(false);
+
+  const refreshWa = async () => {
+    try {
+      const res = await fetch("/api/whatsapp/status");
+      if (!res.ok) { setWaState({ kind: "not-linked" }); return; }
+      const json = (await res.json()) as {
+        linked: boolean; pending?: boolean;
+        phone_e164?: string; verified_at?: string;
+        verification_expires_at?: string | null;
+      };
+      if (json.linked && json.phone_e164 && json.verified_at) {
+        setWaState({ kind: "linked", phone_e164: json.phone_e164, verified_at: json.verified_at });
+      } else if (json.pending && json.phone_e164) {
+        setWaState({ kind: "pending", phone_e164: json.phone_e164, expires_at: json.verification_expires_at ?? null });
+      } else {
+        setWaState({ kind: "not-linked" });
+      }
+    } catch {
+      setWaState({ kind: "not-linked" });
+    }
+  };
+
+  useEffect(() => { void refreshWa(); }, []);
+
+  // Polling cada 3s mientras estamos en pending para detectar la verificación
+  useEffect(() => {
+    if (waState.kind !== "pending") return;
+    const interval = setInterval(() => { void refreshWa(); }, 3000);
+    return () => clearInterval(interval);
+  }, [waState.kind]);
+
+  const handleWaStartVerification = async () => {
+    if (!waPhoneInput.trim()) {
+      toast("Ingresá tu número de WhatsApp", "error");
+      return;
+    }
+    setWaBusy(true);
+    try {
+      const res = await fetch("/api/whatsapp/start-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone_raw: waPhoneInput.trim() }),
+      });
+      const json = await res.json() as { ok?: boolean; error?: string; hint?: string; phone_e164?: string; expires_in?: number };
+      if (!res.ok || !json.ok) {
+        const msg = json.hint
+          ?? (json.error === "too_many_attempts" ? "Demasiados intentos. Esperá 1 hora." : `Error: ${json.error ?? "desconocido"}`);
+        toast(msg, "error");
+        setWaBusy(false);
+        return;
+      }
+      toast("Te mandamos un código por WhatsApp. Respondé con el código para confirmar.", "success");
+      setWaPhoneInput("");
+      await refreshWa();
+    } catch (err) {
+      toast(`Error: ${(err as Error).message}`, "error");
+    } finally {
+      setWaBusy(false);
+    }
+  };
+
+  const handleWaUnlink = async () => {
+    if (!confirm("¿Desvincular tu WhatsApp? Los mensajes que ya recibimos se mantienen, pero mensajes nuevos no se asocian a tu cuenta.")) return;
+    setWaBusy(true);
+    try {
+      const res = await fetch("/api/whatsapp/unlink", { method: "DELETE" });
+      if (!res.ok) {
+        toast("No pudimos desvincular", "error");
+        setWaBusy(false);
+        return;
+      }
+      toast("WhatsApp desvinculado", "info");
+      await refreshWa();
+    } finally {
+      setWaBusy(false);
+    }
+  };
 
   // ─── Security at-rest (audit 05/2026) ───────────────────────────────────
   // Estado: ¿hay passcode? ¿está unlocked? ¿hay datos plain pendientes?
@@ -197,7 +358,13 @@ export default function SettingsPage() {
     isTrackingEnabled().then(v => queueMicrotask(() => setTracking(v))).catch(() => {});
     areTaskRemindersEnabled().then(v => queueMicrotask(() => setTaskReminders(v))).catch(() => {});
   }, []);
-  const handleSaveKey = () => {
+  const handleSaveKey = async () => {
+    // Verificar Turnstile antes de aceptar la key (anti-bot del paste flow)
+    const captcha = await verifyTurnstileToken(byokTurnstileToken);
+    if (!captcha.ok) {
+      toast("No pudimos verificar que sos humano. Reintentá el captcha.", "error");
+      return;
+    }
     setUserApiKey(apiKey);
     setKeyJustSaved(true);
     setTimeout(() => setKeyJustSaved(false), 2000);
@@ -324,6 +491,226 @@ export default function SettingsPage() {
                 Lo que NO se cifra: IDs (UUIDs), mime type, tamaño y fecha de los archivos
                 (metadata, no contenido). Esto permite listar el Vault sin pedir passcode.
               </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Tampu+ Lifetime (USD 29 one-time) ─── */}
+      {/* Compra única, sin renovación. Desbloquea proxy IA gestionado,    */}
+      {/* badge Supporter, themes y crédito futuro de marketplace.         */}
+      <Card id="tampu-plus" className={isPlus ? "border-l-4 border-l-success" : "border-l-4 border-l-primary"}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Heart className={`w-4 h-4 ${isPlus ? "text-success" : "text-primary"}`} />
+            Tampu+
+            {!isPlus && (
+              <span className="text-[11px] font-normal text-muted-foreground ml-1">
+                USD 29 · pagás una vez, no se renueva nunca
+              </span>
+            )}
+            {isPlus && (
+              <span className="text-[11px] font-medium text-success ml-1">
+                Activo
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {plusLoading ? (
+            <p className="text-xs text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Chequeando estado…
+            </p>
+          ) : isPlus ? (
+            <>
+              <div className="rounded-md bg-success/10 border border-success/30 p-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Heart className="w-4 h-4 text-success" />
+                  Sos Tampu+ {plusPurchase?.purchased_at
+                    ? `desde ${new Date(plusPurchase.purchased_at).toLocaleDateString(locale === "en" ? "en-US" : "es-AR", { year: "numeric", month: "long", day: "numeric" })}`
+                    : ""}
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Gracias. En serio. Tenés desbloqueado el proxy IA gestionado (sin BYOK),
+                  badge Supporter, themes adicionales y USD 5 de crédito para el futuro marketplace.
+                  Si reservás por Booking via Tampu, igual recibo comisión — gracias doble.
+                </p>
+              </div>
+              <Button
+                onClick={handleRestorePurchase}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Restaurar compra
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Tampu es gratis para siempre. Si te sirve y querés apoyar al proyecto,
+                {" "}<strong>Tampu+</strong> es una compra única de <strong>USD 29</strong> que
+                desbloquea proxy IA gestionado (no hace falta tu propia key),
+                badge, themes y crédito para el futuro marketplace. Cero suscripción.
+                Cero renovación automática. Si no me apoyás, igual te sigue funcionando todo. ✋
+              </p>
+              <ul className="text-[11px] text-muted-foreground space-y-1 ml-4 list-disc">
+                <li>Proxy IA gestionado: 200 llamadas/mes sin manejar API keys</li>
+                <li>Badge <em>Supporter</em> en el perfil</li>
+                <li>Themes adicionales (más allá del Hornocal default)</li>
+                <li>Priority support · email con prefijo <code className="bg-muted px-1 py-0.5 rounded">[Tampu+]</code></li>
+                <li>USD 5 de crédito para itinerarios premium en el marketplace (mes 2)</li>
+              </ul>
+              <Button
+                onClick={handleStartCheckout}
+                disabled={checkoutBusy}
+                className="gap-1"
+              >
+                {checkoutBusy ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" />Abriendo checkout…</>
+                ) : (
+                  <><Heart className="w-4 h-4" />Apoyar a Tampu (USD 29)</>
+                )}
+              </Button>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Pago seguro vía Stripe · tarjeta de crédito o débito. Si ya compraste y no
+                ves el badge, tocá <em>Restaurar compra</em> más abajo (necesita estar logueado
+                con el mismo email).
+              </p>
+              <Button
+                onClick={handleRestorePurchase}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Restaurar compra
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── WhatsApp (mayo 2026) ─── */}
+      {/* Diferenciador competitivo: ningún competidor LatAm tiene WhatsApp   */}
+      {/* ingestion. El user reenvía confirmaciones a un número Tampu y      */}
+      {/* parseamos con Claude Haiku. MVP: solo texto, 1 phone por user.     */}
+      <Card id="whatsapp" className={
+        waState.kind === "linked" ? "border-l-4 border-l-success"
+          : waState.kind === "pending" ? "border-l-4 border-l-warning"
+          : "border-l-4 border-l-primary"
+      }>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageCircle className={`w-4 h-4 ${
+              waState.kind === "linked" ? "text-success"
+                : waState.kind === "pending" ? "text-warning"
+                : "text-primary"
+            }`} />
+            WhatsApp
+            {waState.kind === "linked" && (
+              <span className="text-[11px] font-medium text-success ml-1">Vinculado</span>
+            )}
+            {waState.kind === "pending" && (
+              <span className="text-[11px] font-medium text-warning ml-1">Esperando código</span>
+            )}
+            {waState.kind === "not-linked" && (
+              <span className="text-[11px] font-normal text-muted-foreground ml-1">Sin vincular</span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Reenviá confirmaciones (vuelos, hoteles, reservas, mensajes del host de Airbnb,
+            vouchers de tour) por WhatsApp a Tampu y las agrego automáticamente a tu viaje.
+            Funciona también con mensajes en portugués brasileño.
+          </p>
+
+          {waState.kind === "loading" && (
+            <p className="text-xs text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Chequeando estado…
+            </p>
+          )}
+
+          {waState.kind === "not-linked" && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase text-muted-foreground">Tu número (con código de país)</label>
+                <Input
+                  type="tel"
+                  value={waPhoneInput}
+                  onChange={(e) => setWaPhoneInput(e.target.value)}
+                  placeholder="+54 9 11 4040 4040"
+                  autoComplete="tel"
+                  className="font-mono"
+                />
+              </div>
+              <Button onClick={handleWaStartVerification} disabled={waBusy || !waPhoneInput.trim()} className="gap-1">
+                {waBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                Vincular WhatsApp
+              </Button>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Te mandamos un código por WhatsApp. Respondé con el código en el mismo chat para
+                confirmar.
+              </p>
+            </div>
+          )}
+
+          {waState.kind === "pending" && (
+            <div className="rounded-md bg-warning/10 border border-warning/30 p-3 space-y-2">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Loader2 className="w-4 h-4 animate-spin text-warning" />
+                Esperando código de {waState.phone_e164}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Te enviamos un mensaje por WhatsApp con un código de 6 dígitos. Respondé con el
+                código en el mismo chat para terminar la vinculación. Vence en 10 minutos.
+              </p>
+              <Button
+                onClick={handleWaUnlink}
+                variant="outline"
+                size="sm"
+                disabled={waBusy}
+                className="gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Cancelar
+              </Button>
+            </div>
+          )}
+
+          {waState.kind === "linked" && (
+            <>
+              <div className="rounded-md bg-success/10 border border-success/30 p-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-success" />
+                  Vinculado: <code className="font-mono">{waState.phone_e164}</code>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Desde ahora, reenviá cualquier confirmación de viaje al número Tampu y aparece
+                  parseada en la sección WhatsApp de la app.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/whatsapp"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border text-xs font-medium hover:bg-accent transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  Ver mensajes
+                </Link>
+                <Button
+                  onClick={handleWaUnlink}
+                  variant="outline"
+                  size="sm"
+                  disabled={waBusy}
+                  className="gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Desvincular
+                </Button>
+              </div>
             </>
           )}
         </CardContent>
@@ -463,10 +850,15 @@ export default function SettingsPage() {
                     {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <Button onClick={handleSaveKey} disabled={!apiKey || (apiKey === getUserApiKey() && !keyJustSaved)} className="gap-1">
+                <Button
+                  onClick={handleSaveKey}
+                  disabled={!apiKey || !byokTurnstileToken || (apiKey === getUserApiKey() && !keyJustSaved)}
+                  className="gap-1"
+                >
                   {keyJustSaved ? <><Check className="w-4 h-4" />Guardado</> : "Guardar"}
                 </Button>
               </div>
+              <Turnstile onSuccess={(t) => setByokTurnstileToken(t)} className="mt-1" />
 
               {apiKey && !keyValid && (
                 <p className="text-[11px] text-destructive">

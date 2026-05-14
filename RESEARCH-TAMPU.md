@@ -1,7 +1,7 @@
 # Tampu — Investigación de mercado y auditoría profunda
 
 **Loop activo** · 20 min de intervalo · 15 ejes · 5 hs reales
-**Progreso**: 2/15 completados
+**Progreso**: 3/15 completados
 **Iniciado**: 2026-05-12
 
 ---
@@ -11,7 +11,7 @@
 ### Competidores directos (planificadores y trip aggregators)
 - [x] **AXIS 1**: TripIt (deep dive) — features actuales, pricing 2026, reviews críticas App Store, churn reasons, qué hacen bien, qué les falta
 - [x] **AXIS 2**: Wanderlog (deep dive) — modelo gratuito + premium, colaboración multi-user, ranking en App Store, lo que se quejan los users
-- [ ] **AXIS 3**: Tripsy + Polarsteps — UX patterns, foto-journey, suscripción, retención
+- [x] **AXIS 3**: Tripsy + Polarsteps — UX patterns, foto-journey, suscripción, retención
 - [ ] **AXIS 4**: Hopper + Flighty — algoritmos diferenciadores (price prediction, delay prediction), modelo de negocio
 - [ ] **AXIS 5**: Booking.com / Skyscanner / Kayak — patrones mobile, fees ocultos, lo que la gente odia
 
@@ -341,4 +341,176 @@ Fuentes adicionales verificadas en este sub-research:
 ### Notas del investigador
 
 El takeaway estratégico es que Wanderlog es un **producto bien construido pero estructuralmente vulnerable en tres ejes simultáneos**: idioma + LatAm + UX de colaboración. Es un equipo de 5–7 personas con USD 1.65M de funding total que está en growth phase técnico (cadencia semanal) pero en plateau geográfico (US 41% del tráfico, 0% LatAm). **Esto no es un competidor que pueda defender LatAm con dinero** — la guerra contra ellos no se gana con marketing pago, se gana con producto local mejor y un canal (WhatsApp) que ellos no tocan. La asimetría es perfecta: Wanderlog tiene 5M+ downloads y se va a defender en US/Europa, dejando LatAm vacante. La pregunta operativa para Tampu no es "podemos competir con Wanderlog" sino "qué partes del producto Wanderlog tenemos que igualar (colaboración core, maps, expense splitting) y qué partes podemos dejar fuera o hacer al revés (offline gratis vs paywall, WhatsApp vs solo email, ES-AR nativo vs ES superficial, afiliado declarado vs oculto)". El **Trip Journal** que Wanderlog lanzó marzo 2026 valida que la categoría está moviéndose hacia journaling/foto-journey — Tampu ya tiene Fotos como 5ª tab troncal (decisión correcta validada), pero debería ir un paso más allá con reviews por lugar (rating + price level $-$$$$) que Wanderlog no tiene formalmente. Hay también una **señal cultural importante**: que el gobierno argentino haya lanzado su propio AI travel planner en mayo 2026 muestra que la categoría "travel planner local LatAm" tiene aire de relevancia política — el mercado está nombrando la categoría, lo cual es bueno para el demand-side y permite que Tampu surfee la ola sin tener que crearla. El riesgo simétrico es que el gobierno o Despegar/Decolar lancen un planner gratis con escala instantánea: la respuesta no es competir en escala sino en privacy + curaduría + WhatsApp + transparencia de afiliados.
+
+---
+
+## AXIS 3 — Tripsy + Polarsteps deep dive
+
+**Método**: 2 sub-agentes paralelos investigando en simultáneo cada producto con mínimo 8 WebSearch + WebFetch a fuentes primarias. Tripsy se investigó como "indie premium iOS-native" (foco UX patterns, pricing, ingestion, AI posture); Polarsteps se investigó como "auto-tracking journal con monetización photobook" (foco foto-journey, retención, network effect, modelo de revenue alternativo a SaaS). Triangulación entre sitios oficiales, App Store, Play Store, blogs founders, Tracxn, Crunchbase, Peecho (print partner Polarsteps), Mapbox showcase, releases changelog, prensa especializada (Skift, Phocuswire, 9to5Mac, MacStories), interviews de founders (Substack `infounderswords`, Startuprad.io), reviews 2024–2026.
+
+---
+
+### TRIPSY — Indie premium iOS-native (Brasil, 2 personas, unfunded)
+
+#### Fuentes citadas (verificadas, acceso 2026-05-13)
+- https://tripsy.app/ — Sitio oficial: plataformas (iPhone, iPad, Mac, Apple Watch, Vision Pro), features core, posture privacy
+- https://tripsy.app/pro — Pricing Pro: lifetime USD 299, anual USD 59, Family Sharing
+- https://tripsy.app/updates — Changelog: v3.8.10 (mayo 2026), v3.8.0 (mar 2026 Calendar + Trip Duplication), Recap 2025
+- https://tripsy.help/article/21-whats-the-price-of-premium — Precios oficiales mensual USD 9.99, anual USD 59.99, lifetime USD 299
+- https://tripsy.help/article/45-forwarding-emails-to-tripsy — Forwarding: `my@tripsy.app` (shared) + `*.tripsy.email` (per-user autogenerada), 1.000+ providers, "no scaneamos tu inbox"
+- https://apps.apple.com/us/app/tripsy-travel-planner/id1429967544 — App Store US: 4.7/5, 5.400+ ratings, iOS 18+, 204.7 MB, 32 idiomas, Editor's Choice
+- https://apps.apple.com/br/app/tripsy-itinerários-de-viagem/id1429967544 — App Store BR: localizada en portugués
+- https://tripsy.blog/introducing-tripsy/ — Founder story: Rafael Kellermann Streit + Thiago Sanchez, 2018, Brasil
+- https://tripsy.blog/how-are-we-integrating-tripsy-with-chatgpt-to-automate-some-travel-planning-flows/ — Mayo 2025: integran ChatGPT/Raycast/Perplexity vía App Intents, **NO LLM nativo**
+- https://www.sketch.com/blog/tripsy/ — Feb 2024: equipo de 2, design en Sketch, Apple HIG estricto
+- https://tracxn.com/d/companies/tripsy/ — Brazil, 2018, **unfunded** (zero raised), sin investors
+- https://www.wandrly.app/reviews/tripsy — Quejas top: performance (save 4 min), iOS-only, sharing paywalled, location search rota
+- https://setapp.com/apps/tripsy/customer-reviews — Elogio top "no plan trip without it"; quejas "UI clunky", "no PDF export", sharing paywall USD 35
+- https://9to5mac.com/2024/10/02/tripsy-travel-planner/ — Refresh 2024: customizable overview, widgets interactivos, lock screen complications
+
+#### Hallazgos clave (con números)
+1. **Equipo de 2 personas brasileros**. Rafael Kellermann Streit (dev/business) + Thiago Sanchez (designer). Fundada 2018 en Brasil. **Cero funding raised** (Tracxn verificado). Es el caso extremo de indie premium en travel.
+2. **Plataformas mayo 2026**: iPhone, iPad, Mac (Apple Silicon), Apple Watch (watchOS 10+), Vision Pro. iOS 18+ mínimo. **Web y Android en waitlist sin fecha, public statement "approach thoughtfully, only when we can do it right"**. Probabilidad alta de que Android nunca shippee con headcount 2.
+3. **App Store US: 4.7/5 con 5.400+ ratings** (modesto para 8 años live). Editor's Choice. Tamaño estimado entre 100k–500k MAU (no publicado, **no verificado**).
+4. **Cadencia release ALTA**: ~12 versiones en últimos 6 meses (bi-semanal). Major release v3.8.0 marzo 2026 (Calendar integration + Trip Duplication). Anterior major v3.7 dic 2025 (Recap anual tipo Spotify Wrapped). Cadencia comparable a Wanderlog y muy superior a TripIt.
+5. **32 idiomas listados** (English + 31), **TODOS GENÉRICOS** — solo "Português" y "Español" sin diferenciar BR vs PT ni AR vs ES. Voseo argentino: no soportado (alta probabilidad — convención iOS estándar).
+6. **Email forwarding: 1.000+ providers parseados** (creció desde 520 reportados en 2023). Address dual: `my@tripsy.app` shared + **address única `*.tripsy.email` per-user autogenerada** para nuevos signups desde 2025. Mejor UX que TripIt o Wanderlog.
+7. **Posture privacy explícita = forwarding ONLY, NO OAuth Gmail/Inbox Sync**. Cita oficial: "We don't connect to your email accounts or mail apps to scan emails." Es feature publicitada, no limitación. Diferenciador defensible contra TripIt Inbox Sync.
+8. **Pricing mayo 2026**: USD 9.99/mes — USD 59.99/año — **USD 299 lifetime** — Family Sharing via Apple. Sin pricing regional documentado. **Aumento de precio histórico ~8x desde 2018** (USD 0.99/mes → USD 9.99/mes; USD 7.49/año → USD 59.99/año).
+9. **AI NATIVO = CERO**. No generan itinerarios, no resumen, no parsean emails con LLM, no captioning. Solo integración indirecta vía App Intents iOS donde el USUARIO invoca ChatGPT/Raycast/Perplexity y pega resultado. **Esto es regresivo para 2026** — Wanderlog, Polarsteps, Travo ya tienen LLM nativo.
+10. **WhatsApp / Telegram / iMessage ingestion: NO existe**. Solo email. Tripsy solo aparece como destino del share-sheet iOS para invitar colaboradores, no como receptor de mensajería entrante.
+11. **Apple Wallet (.pkpass): NO documentado**. No aparece en updates, ni sitio oficial, ni reviews. Tripsy almacena PDFs y boarding pass como documents pero no genera ni consume .pkpass nativos.
+12. **Features Apple-ecosystem fuertes**: Live Activities (lock-screen widgets desde v3.8.5), Widgets interactivos iOS/iPadOS/macOS, watchOS Smart Stack, Siri Shortcuts, App Intents, Sign in with Apple, Apple Maps deep links, multi-window iPad. Stack: Swift + SwiftUI + CloudKit (inferido, no confirmado oficialmente).
+13. **Free tier severamente limitado**: aunque marketing dice "unlimited trips" en free, en práctica forwarding email, unlimited documents, unlimited guests collaboration y 10-day weather están **detrás del paywall**. Top queja reviews: sharing tras paywall mata viralidad grupal.
+14. **Top 5 quejas 2024–2026**: (a) **performance/lag** al guardar (hasta 4 minutos reportados), (b) **iOS-only deal breaker** para grupos mixtos, (c) **sharing locked tras paywall** USD 35-59, (d) location search falla, (e) **zonas horarias erróneas** (auto-detect de hotel en Japón no setea Japan TZ).
+15. **Top 5 elogios**: (a) diseño Apple-native premium, (b) email forwarding "como magia" cuando funciona, (c) widgets/Live Activities pulidos, (d) colaboración multi-guest fluida (cuando pagás), (e) privacy-first sin OAuth Gmail.
+16. **Cobertura LatAm**: founders brasileros sugiere parsing GOL/Azul/LATAM Brasil decente (no verificado). **Despegar, Aerolíneas Argentinas, Copa, Avianca, Flybondi, JetSMART: no verificado en docs públicas**. App Store BR localizada en portugués pero rating BR no separable de US.
+
+#### Qué nailan
+- **Forwarding email + privacy posture clara**: limpia, confía en el usuario, evita el debate Gmail-scope CASA Tier 2.
+- **Diseño Apple-native premium**: Live Activities, widgets interactivos, watchOS, Vision Pro — pulido que solo equipos chicos obsesionados logran.
+- **Cadencia release bi-semanal** con bug fixes serios — disciplina extrema con 2 personas.
+- **Modelo lifetime USD 299** crea ancla psicológica y reduce churn — única forma honesta de competir contra TripIt mensual sin trampa.
+- **Unique forwarding address per-user** (`*.tripsy.email`) — superior a Wanderlog (`trips+ID@`) y TripIt (`plans@` global).
+- **Recap anual** (Recap 2025) como gancho de retención y growth viral shareable.
+- **Calendar integration bidireccional** v3.8 mar 2026 — diferenciador vs TripIt y Wanderlog.
+- **Stack disciplinado** Swift + SwiftUI + CloudKit-style explica cómo 2 personas sostienen el producto a 5k+ ratings.
+
+#### Qué les falta / dónde fallan
+- **Cero AI nativo en 2026** — gap regresivo. Wanderlog, Polarsteps, Travo lo tienen. Tampu puede leapfrog acá con LLM stack ya disponible.
+- **iOS-only es kryptonita en LatAm** (~70-80% Android share AR/BR/MX). Tripsy literalmente no puede ser app de grupo regional.
+- **Performance/save bugs** documentados (4 min saves) — el equipo de 2 no escala QA al ritmo del feature output.
+- **Idiomas genéricos** sin localización regional. Solo "Español" y "Português" pelados.
+- **Sharing tras paywall** mata viralidad. Tampu con sharing free tier desbloquea growth orgánico.
+- **Sin WhatsApp ingestion** (igual que TripIt y Wanderlog) — el blue ocean LatAm sigue intacto.
+- **Web waitlist sin fecha años** — signal de capacity limit del equipo.
+- **Sin pricing PPP/regional**: USD 59.99/año = ARS ~70k/año a oficial mayo 2026, prohibitivo para clase media argentina.
+
+#### Implicaciones para Tampu (Tripsy)
+1. **Robar el "unique forwarding address per-user" pattern**: cada usuario Tampu recibe `tu-nick@in.tampu.app` autogenerada en onboarding. Mejor UX que Wanderlog (`trips+ID@`) y matchea Tripsy. Costo cero, valor alto.
+2. **Robar el "Recap anual"** como growth viral. Spotify Wrapped del viaje. Genera shareables que el usuario postea voluntariamente — CAC orgánico. Implementable como server-side render de PDF/PNG en Vercel.
+3. **No igualar el diseño Apple-obsesivo de Tripsy** — Tampu es web-first via Capacitor, no nativo SwiftUI. Pero **igualar la posture privacy** ("tus datos en tu device, sin OAuth Gmail") es 100% transferible y narrativamente fuerte.
+4. **Pricing wedge claro**: si Tampu llegara a tener tier paga (no es el modelo affiliate actual), un lifetime USD 49 o un anual ARS 15k local cierra un gap 4x vs Tripsy USD 60 anual, con narrativa "pagás una vez, no te sorprenden". Tampu como anti-suscripción.
+
+---
+
+### POLARSTEPS — Auto-tracking journal con monetización photobook (Amsterdam, 90 personas, $5M raised)
+
+#### Fuentes citadas (verificadas, acceso 2026-05-13)
+- https://apps.apple.com/us/app/polarsteps/id947925763 — App Store iOS: v9.30.0, 4.9★, 7.900 US ratings, 189.5 MB, iOS 17+, 12 idiomas
+- https://play.google.com/store/apps/details?id=com.polarsteps — Play Store: 4.7★, 174K ratings, **10M+ descargas**, Editor's Choice
+- https://www.polarsteps.com/ — Homepage: claim "20M+ travelers", 4.8 con 370K reviews agregadas, "proudly ad-free", "<4% batería/día"
+- https://news.polarsteps.com/news/polarsteps-summer-2025-release-is-here — Summer 2025 (24 jun 2025): **AI Itineraries powered by Claude AI**, Trip Reel, visual redesign
+- https://news.polarsteps.com/news/polarsteps-hits-15-million-users-as-travelers-embrace-authentic-storytelling — 15M usuarios (4 jul 2025)
+- https://news.polarsteps.com/news/from-dutch-startup-to-global-sensation — Francia +290% en 2024, 21% del userbase, **5.5M dutchies (≈1/3 NL)**
+- https://www.peecho.com/case-studies/polarsteps — Print partner: photobooks = **"100% of the revenue"**
+- https://www.mapbox.com/showcase/polarsteps — Stack confirmado: **Mapbox Mobile SDK + GL JS**, 20B km trackeados en 2024
+- https://infounderswords.substack.com/p/the-viral-growth-playbook-how-to — Clare Jones (CEO) interview: 13M+ users, target **100M MAU**, ~5 amigos/trip
+- https://www.startuprad.io/post/polarsteps-growth-privacy-first-travel-app-at-18m-users — 18M+ users, revenue books + afiliados (Booking, Airbnb, Hostelworld), **subscription "planeada pero no lanzada"**
+- https://support.polarsteps.com/hc/en-us/articles/24003935464466 — Travel Book €36–€150 (no verificado por 403, confirmado agregadores)
+- https://support.polarsteps.com/hc/en-us/articles/24004788343954 — Envío mundial gratis, **customs no cubierto**
+- https://press.polarsteps.com/100387-apple-watch-app-shows-live-travel-statistics — Apple Watch app confirmada
+- https://www.wandrly.app/reviews/polarsteps — Comparativa 2025: free tier completo, sólo book es pago
+- https://careers.polarsteps.com/ — Headcount: **"90 y contando, 25+ nacionalidades"**
+- https://www.crunchbase.com/organization/polarsteps — **Funding total $5.05M** (Series A €3M INKEF Capital 2019), fundada 2014
+
+#### Hallazgos clave (con números)
+1. **18–22M usuarios registrados (mayo 2026 estimado)**. Inconsistencia oficial: home dice 20M+, julio 2025 anunciaron 15M, Substack interview menciona 13M+. Target declarado **100M MAU** sin timeline. CAGR 117% FT1000 (2021–2024).
+2. **Francia es el caso de hipergrowth 2024**: **+290% YoY**, ahora **21% del userbase global**. París es la ciudad #1 mundial en usuarios activos. NL = 5.5M usuarios = **1/3 de la población nacional**.
+3. **Ninguna mención a LatAm en comunicaciones oficiales 2024-2025**. Plan documentado: replicar FR/DE/UK/US en 4 años. **LatAm explícitamente fuera del roadmap declarado**.
+4. **Revenue mix: 100% photobooks físicos** (Peecho case study oficial). Afiliados Booking/Airbnb/Hostelworld mencionados como adicionales pero sin breakdown público. **Subscription explícitamente diferida** por la CEO ("travel is one of the best spaces for subscription pero primero hay que hacer algo amazing").
+5. **Travel Book: €36 (24 páginas) a €150 (premium lay-flat)**. Envío mundial gratis declarado, **pero customs NO cubierto** — para Argentina/Brasil/México esto significa AFIP/Receita Federal duplica el costo efectivo. Descuentos volumen: 10% por 2, 15% por 3+.
+6. **Funding total $5.05M en 12 años**. Series A €3M INKEF Capital 2019. **$0.25/user lifetime raised** — eficiencia capital extraordinaria. Probablemente rentables desde 2021–2022.
+7. **Headcount 90 personas Amsterdam HQ**, 25+ nacionalidades. Stack: **Mapbox** (Mobile SDK + GL JS), **Claude AI (Anthropic)** para itineraries opt-in, iOS/Android nativos, Peecho para print fulfillment.
+8. **iOS rating 4.9★ con 7.900 US ratings, 370K global agregadas**. Android **4.7★ con 174K ratings, 10M+ descargas, Editor's Choice Google Play**. Gap 0.2★ entre iOS y Android sugiere mejor experiencia iOS pero ambas premiadas.
+9. **Versión iOS actual: 9.30.0**. iOS 17+ mínimo. 189.5 MB. Cadencia release ALTA — el major Summer 2025 (jun 2025) shippeo AI Itineraries + Trip Reel + redesign simultáneamente.
+10. **AI Itineraries (jun 2025)**: opt-in, usa historial del user + contenido editorial humano + **Claude (Anthropic)** como motor. UI map-centric, NO chatbot. **Fotos/videos NO se envían a servicios externos de IA** — privacy claim explícito.
+11. **Trip Reel**: video corto cinematográfico autogenerado desde fotos/videos/locations. Competencia directa al output IG/TikTok pero como producto interno, no consumo de feed.
+12. **Battery claim: <4%/día trackeando**. Técnica: NO polling GPS continuo, sino "breadcrumbs" asincrónicos via WiFi+celda+GPS asistido de otras apps. Sin sync tiempo real — feature, no bug.
+13. **Idiomas (12)**: Inglés, Holandés, Alemán, Francés, Español, Portugués, Italiano, Danés, Finlandés, Noruego Bokmål, Sueco, Indonesio, Malayo. **Español NO diferenciado AR/ES, Portugués NO diferenciado BR/PT**.
+14. **Polarsteps Unpacked = Spotify Wrapped del viaje**. Requiere ≥1 trip. Activo en polarsteps.com/unpacked. Gancho retención + shareability.
+15. **Colaboración multi-user: NO soportada**. Solo una persona puede agregar fotos/notas por trip. **Queja recurrente verificada** en reviews 2024-2025. Viajes en pareja/familia son segundo-clase ciudadano estructural.
+16. **NO es planner**: NO guarda vuelos, hoteles, reservas, confirmation numbers, documentos. Es journal puro post-evento o durante. **Esto deja el gap "agregador de documentos" estructuralmente abierto** — exactamente el espacio Tampu.
+17. **Stat icónica 2024: 20 mil millones de km trackeados** (≈40 viajes a Marte). Marketing storytelling como artefacto cultural.
+
+#### Qué nailan
+- **Onboarding pasivo cero-fricción**: "instalo y olvido", el tracking pasa solo. Diferencia abismal vs apps que exigen check-ins manuales (Tripsy, Wanderlog, TripIt).
+- **Storytelling de marca contracultural**: "ad-free, by travelers for travelers, privacy-first" + KPIs poéticos (20B km a Marte, "1/3 of the Netherlands"). Vibe anti-feed-social-tóxico.
+- **Travel Book como monetización elegante**: regalo emocional físico, márgenes altos vía Peecho, opt-in al final del viaje con engagement máximo. **Sin paywall en la experiencia core**.
+- **Mapa como producto, no como feature**: la "vista de viaje" con ruta real (no líneas rectas) es el shareable artifact que dura años.
+- **Network effect orgánico**: ~5 amigos/familia siguen por trip → cuando ven el mapa en persona, descargan. **CAC orgánico bajísimo**.
+- **AI integrada al map UX, no chat**: aprovecharon LLMs sin caer en el "chatbot kid genérico". Claude para itineraries pero captioning de fotos lo evitan deliberadamente (autenticidad).
+- **Editor's Choice ambas stores** + iOS 4.9★ = engineering execution alta.
+- **Penetración cultural NL** prueba que el producto puede convertirse en default behavior cultural.
+
+#### Qué les falta / dónde fallan
+- **Cero presencia LatAm**: ningún partnership, ninguna mención roadmap, ningún PR. Portugués sin BR.
+- **Travel Book a Argentina = customs nightmare**: envío gratis pero AFIP duplica el costo. Producto efectivamente inaccesible o caro 2x en LatAm.
+- **Cero soporte multi-user/shared trips**: queja #1 recurrente. Viajes en pareja/familia segundo-clase.
+- **Bugs persistentes de tracking**: "mystery flights", "teleportations", fotos que no aparecen en mapa, datos que no sincronizan. Sin solución completa 2024-2025.
+- **NO es planner**: no guarda vuelos, hoteles, reservas, documentos. CEO admite que no van a hacerlo (no es su DNA).
+- **Sin subscription = revenue cap real**: dependen 100% de un product físico con logistics + customs. No escala lineal con MAU.
+- **Sin Wear OS** (solo Apple Watch), sin colaboración real, sin export sólido (no PDF/MP4 confirmado más allá de Trip Reel).
+- **Idiomas no localizados culturalmente**: español es España-flavored, no rioplatense ni LatAm.
+
+#### Implicaciones para Tampu (Polarsteps)
+1. **NO competir en "auto-tracking + journal"**: Polarsteps lo gana en NL/FR/DE estructuralmente. Tampu dobla apuesta en **agregación de documentos + viaje + dinero** (vuelos, hoteles, reservas, seguros, visas, confirmaciones, gastos, transporte). El gap explícito que la CEO de Polarsteps **deliberadamente** no quiere cerrar.
+2. **Tab "Fotos" como sidecar contextualizado a documentos, NO como journal social**: Polarsteps ya nailó journal-as-output con 20M users. Tampu compite si las fotos se **conectan a documentos** (foto del boarding pass auto-extrae datos, foto del hotel auto-rellena reserva, foto del recibo auto-categoriza gasto). Que la 5ª tab sea "fotos útiles", no "fotos lindas".
+3. **Robar el Recap/Unpacked anual + shareability**: Polarsteps demostró que el artifact final (mapa) genera ~5 amigos/trip que ven el output. Tampu necesita su artifact equivalente para documentos — propuesta: **"historial verificable de viajes"** útil para visas/inmigración LatAm + Recap anual con stats de gasto, km, países, vuelos.
+4. **Resolver el "Travel Book customs LatAm" como nicho**: Tampu puede ofrecer **photobook + courier local AR/BR/MX** (vía Locucal, Cuponstar, partner regional print on-demand). Margen alto, Polarsteps físicamente no puede atender bien. **No es prioridad MVP pero está mapeado como revenue stream futuro**.
+5. **Adoptar el modelo "ad-free + revenue alternativo"** explícitamente. Polarsteps probó que se puede tener 18M users con $5M raised y rentabilidad — la disciplina de NO SaaS-recurrente es defensible. Tampu con **affiliate honesto + photobook regional + lifetime opcional** matchea ese modelo mejor que cualquier suscripción mensual.
+
+---
+
+### Comparación cruzada Tripsy vs Polarsteps vs Tampu
+
+| Dimensión | Tripsy | Polarsteps | Tampu (target) |
+|---|---|---|---|
+| **Categoría** | Planner aggregator iOS-native | Journal auto-tracker map-centric | Aggregator + Documentos + Dinero + Fotos contextualizadas |
+| **Plataforma** | iOS-only (Web/Android waitlist) | iOS + Android + Web | iOS + Android + Web (Capacitor + Next.js) |
+| **Equipo** | 2 personas, unfunded, Brasil | 90 personas, $5M raised, NL | Solo founder + IA, Argentina |
+| **Idiomas** | 32 (genéricos) | 12 (sin BR/AR diferenciado) | ES-AR + PT-BR nativo + EN |
+| **AI nativo** | Cero (App Intents pasarela) | Claude para itineraries (jun 2025) | Claude/Gemini para parsing + chat (planificado) |
+| **Ingestion email** | Forwarding only (no OAuth) | No aplica (no es planner) | Forwarding + WhatsApp + JSON-LD + LLM fallback |
+| **WhatsApp** | No | No aplica | **Sí (diferenciador estructural)** |
+| **Colaboración** | Multi-guest tras paywall | No soportada | Multi-user free + Yjs CRDT |
+| **Pricing** | USD 59.99/año + USD 299 lifetime | Photobook €36-150 | Free + affiliate + lifetime opcional |
+| **Revenue model** | Subscription | 100% photobook físico | Affiliate honesto + photobook regional |
+| **LatAm coverage** | Founders BR pero sin AR | Cero declarado | Native (target #1) |
+| **Privacy posture** | "No OAuth Gmail" explícito | Ad-free, fotos no van a AI | Cifrado at-rest + BYOK + no OAuth |
+| **Shareable artifact** | Recap anual | Mapa + Trip Reel + Unpacked | **(gap a llenar: Recap + mapa + historial)** |
+| **Network effect** | Bajo (sharing paywalled) | Alto (mapa viral) | Medio-alto (objetivo) |
+
+### Implicaciones cruzadas para Tampu (síntesis de ambos competidores)
+
+1. **Adoptar el "Recap anual" como gancho de retención y growth viral**. Tanto Tripsy como Polarsteps Unpacked validan el patrón. Implementación: server-side render de PDF/PNG/MP4 al fin de año o al fin de viaje. Costo trivial (Vercel server actions), valor alto (CAC orgánico + retention spike).
+2. **Adoptar el "unique forwarding address per-user"** estilo Tripsy `*.tripsy.email`. Mejor UX que Wanderlog `trips+ID@`. Costo cero, mensaje "tu email privado para reenviar confirmaciones". Patron: `{nick}@in.tampu.app` autogenerada en onboarding con opción de personalizar.
+3. **Pricing wedge claro contra ambos**: Tampu no necesita suscripción mensual. Modelo "free + affiliate honesto + lifetime USD 29-49 opcional" mata 3 pájaros: (a) anti-TripIt USD 49/año silencioso, (b) anti-Tripsy USD 60/año, (c) anti-Polarsteps subscription-pendiente. **El lifetime es el ancla emocional**: Tripsy lo prueba con USD 299, Tampu puede ofrecer USD 29-49 con margen positivo dado el costo casi cero del backend (Supabase free tier + Vercel Hobby).
+4. **No competir en "diseño Apple obsesivo" (Tripsy) ni en "auto-tracking journal" (Polarsteps)**. Ambos son moats estructurales construidos por años. Tampu compite en **agregación de documentos + voseo argentino + WhatsApp ingestion + ES-AR + PT-BR + cobertura LatAm carriers**. Es un juego diferente, no copia.
+5. **Adoptar el modelo "ad-free + revenue alternativo" explícitamente**, estilo Polarsteps. Mensaje literal en landing: "Sin ads. Sin venta de datos. Sin suscripción mensual. Si reservás por Tampu, ganamos una comisión declarada. Si no, también te servimos." Esta postura es defendible y narrativamente fuerte contra TripIt (SAP) y Wanderlog (billing dañado).
+6. **Photobook regional LatAm como revenue stream futuro (no MVP)**: Polarsteps prueba que el photobook físico monetiza un journal sin paywall. Tampu puede mapear partnership con printer regional AR/BR/MX a 12-18 meses, cuando haya base de usuarios suficiente.
+
+### Notas del investigador
+
+El takeaway transversal entre Tripsy y Polarsteps es que **ambos eligieron jugar un juego deliberadamente acotado** y eso los hizo defendibles. Tripsy es "el planner iOS premium para nerds Apple" — 2 personas, USD 60/año, 5k+ ratings, lifetime USD 299, no quieren ser Android-ni-web. Polarsteps es "el mapa-recuerdo del viajero" — 90 personas, photobook físico como único revenue, no quieren ser planner-ni-aggregator. Cada uno renunció al 80% del mercado para dominar el 20% donde tienen ventaja estructural. **Esto es la lección clave para Tampu**: el peor camino sería intentar ser Tripsy + Polarsteps + Wanderlog + TripIt simultáneamente. El mejor camino es **elegir explícitamente "el agregador travel-OS para el viajero LatAm premium adulto"** y renunciar al 80% que no entra en eso (auto-tracking pasivo, photobook glossy físico, diseño Apple-obsesivo, planner from-scratch tipo Layla, social feed). El segundo takeaway es que **Polarsteps lleva Claude (Anthropic) en producción desde junio 2025 para itineraries, sin captioning de fotos por privacidad declarada** — esto valida la stack que Tampu eligió (Claude Haiku + Gemini Flash via BYOK) y prueba que el mercado está aceptando AI nativo en travel apps cuando se posiciona como "asistencia al usuario", no "automatización del recuerdo". El tercer takeaway es operativo: **Tripsy con 2 personas brasileros y unfunded shippea ~12 versiones cada 6 meses** — Tampu con 1 founder + IA puede shippear cadencia similar si la disciplina técnica está. El cuarto y más importante: **ningún de los cinco competidores investigados hasta ahora (TripIt, Wanderlog, Tripsy, Polarsteps) tiene WhatsApp ingestion**. Es el blue ocean estructural más limpio identificado hasta el momento del research. Cada burst que pasa lo confirma.
 

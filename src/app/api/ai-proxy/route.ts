@@ -19,7 +19,8 @@
 // Response 503: { error: "proxy_disabled" } cuando TAMPU_ANTHROPIC_KEY no está.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { canCallProxy, recordProxyCall } from "@/lib/ai/rate-limit";
+import { canCallProxy, recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
 
 const ALLOWED_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
 
@@ -31,7 +32,10 @@ function withCors(res: NextResponse, origin: string | null): NextResponse {
     origin.endsWith(".vercel.app");
   if (ok && origin) res.headers.set("Access-Control-Allow-Origin", origin);
   res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  res.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-anthropic-key, x-gemini-key, x-device-fingerprint",
+  );
   res.headers.set("Access-Control-Allow-Credentials", "true");
   res.headers.set("Vary", "Origin");
   return res;
@@ -174,7 +178,14 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. Record el uso (fire-and-forget — no esperamos persistencia Supabase)
-  await recordProxyCall(decision.identifier);
+  const tokensIn = json.usage?.input_tokens ?? Math.ceil((body.userMessage.length + (body.system?.length ?? 0)) / 4);
+  const tokensOut = json.usage?.output_tokens ?? 0;
+  void recordProxyCall(decision.identifier, {
+    endpoint: decision.endpoint,
+    tokensIn,
+    tokensOut,
+    costUsd: estimateCostUsd(tokensIn, tokensOut, "haiku"),
+  }).catch((e) => captureException(e, { tag: "ai-proxy.record" }));
 
   // 5. Return
   return withCors(

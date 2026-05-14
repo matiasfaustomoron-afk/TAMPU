@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLM } from "@/lib/ai/providers";
 import { heuristicItinerary, type GenerateItineraryPrompt, type DraftItinerary } from "@/lib/ai/itinerary-generator";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
+
+// ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
+// Hard cap server-side. NO confiamos en lo que mande el client — un atacante
+// podría enviar maxTokens: 200000 con un prompt repetitivo y quemar la key
+// Tampu. Si necesitás más tokens, abrí una task separada y subí el cap
+// explícitamente acá, no por header.
+const MAX_TOKENS_HARD = 2048;
 
 /**
  * POST /api/generate-itinerary — genera un itinerario from-scratch con IA.
@@ -32,7 +41,7 @@ function withCors(res: NextResponse, origin: string | null): NextResponse {
   res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, x-anthropic-key, x-gemini-key"
+    "Content-Type, x-anthropic-key, x-gemini-key, x-device-fingerprint"
   );
   res.headers.set("Vary", "Origin");
   return res;
@@ -157,7 +166,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { provider, key } = selectProvider(req);
+  // SECURITY: allowTampuFallback default-false. Si el user no trajo BYOK,
+  // este endpoint NO usa la key de Tampu (sólo /api/ai-proxy puede).
+  const { provider, key, source } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) {
     // No LLM disponible → fallback heurístico
     const fallback = heuristicItinerary(body);
@@ -168,9 +179,25 @@ export async function POST(req: NextRequest) {
   const raw = await callLLM(provider, key, {
     system: "Sos un planificador de viajes experto. Devolvés JSON puro, sin markdown ni texto extra.",
     userMessage: userPrompt,
-    maxTokens: 4096,
+    maxTokens: MAX_TOKENS_HARD,
     timeoutMs: 55_000,
   });
+
+  // Log usage para analytics + circuit breaker (ai_proxy_usage)
+  if (raw) {
+    // Estimación rough — los providers actuales (callLLM) no devuelven usage.
+    // Hardcodeamos un upper bound conservador: input ~prompt.length/4 chars→tokens,
+    // output capped a MAX_TOKENS_HARD.
+    const tokensIn = Math.ceil(userPrompt.length / 4);
+    const tokensOut = MAX_TOKENS_HARD; // worst case — fairer al billing
+    const costUsd = estimateCostUsd(tokensIn, tokensOut, "sonnet");
+    void recordProxyCall(source === "byok" ? "byok:itinerary" : "fallback:itinerary", {
+      endpoint: "/api/generate-itinerary",
+      tokensIn,
+      tokensOut,
+      costUsd,
+    }).catch((e) => captureException(e, { tag: "generate-itinerary.record" }));
+  }
 
   if (!raw) {
     const fallback = heuristicItinerary(body);

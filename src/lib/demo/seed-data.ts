@@ -1,4 +1,12 @@
 // ─── TRAVEL OS SEED DATA ───
+// LEGACY — founder-data del viaje Papúa+Seúl. Movido conceptualmente al
+// módulo opt-in `src/lib/demo/papua-seoul-trip.ts`, que es el ÚNICO punto
+// de entrada autorizado para cargarlo. Este archivo todavía contiene los
+// fixtures crudos porque `demo-store.ts` los consume directamente; cuando
+// migremos los fixtures dentro de papua-seoul-trip.ts (o un /fixtures/),
+// este archivo se puede borrar. Safe to delete after 2026-06-15 una vez
+// confirmado que ningún otro código importa `seed*` de este path.
+//
 // Based on real trip: EZE → MNL → POM → PNG Tour → POM → MNL → ICN → Seoul → ICN → EZE
 // Dates: Aug 10 – Sep 2, 2026 (~24 days)
 

@@ -22,6 +22,7 @@
 // es opaca por diseño.
 
 import { hasUserApiKey, withApiKeyHeaders } from "@/lib/ai/user-key";
+import { withDeviceFingerprint } from "@/lib/security/device-fingerprint";
 
 // In Capacitor / mobile builds, the static export has no /api routes — point
 // at the deployed web via NEXT_PUBLIC_API_BASE_URL. Empty string = same origin.
@@ -76,7 +77,11 @@ export async function callAI(opts: CallAIOpts): Promise<CallAIResult | CallAIErr
   // Si el user trae key BYOK, la mandamos por header — el endpoint la prefiere
   // sobre la de Tampu (ver `providers.ts` y `/api/ai-proxy/route.ts`).
   // El rate limit no aplica porque el server detecta BYOK y bypassea.
-  const headers = withApiKeyHeaders({ "Content-Type": "application/json" });
+  //
+  // Device fingerprint: si no hay user logueado, mandamos un fingerprint
+  // estable para que el rate-limit anónimo no caiga al tier strict (10/día).
+  const baseHeaders = withApiKeyHeaders({ "Content-Type": "application/json" }) as Record<string, string>;
+  const headers = await withDeviceFingerprint(baseHeaders);
   const usingByok = hasUserApiKey();
 
   let res: Response;
@@ -153,9 +158,11 @@ export async function fetchProxyUsage(): Promise<{
   daily: { used: number; cap: number };
 } | null> {
   try {
+    const headers = await withDeviceFingerprint({});
     const res = await fetch(`${apiBase()}/api/ai-proxy`, {
       method: "GET",
       credentials: "include",
+      headers,
     });
     if (!res.ok) return null;
     return (await res.json()) as Awaited<ReturnType<typeof fetchProxyUsage>>;

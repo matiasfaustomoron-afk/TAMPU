@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLM } from "@/lib/ai/providers";
 import { runAgenticAssistant, type AgenticContext } from "@/lib/ai/agentic";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { captureException } from "@/lib/observability/sentry";
+
+// ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
+// Hard cap server-side. El cliente NO puede pedir más.
+const MAX_TOKENS_HARD = 1024;
 
 // CORS: allow same-origin (web) + Capacitor (native iOS/Android).
 // In production we ALSO whitelist app:// and capacitor://localhost.
@@ -10,7 +16,7 @@ function withCors(res: NextResponse, origin: string | null): NextResponse {
   const ok = !origin || ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost") || origin.endsWith(".vercel.app");
   if (ok && origin) res.headers.set("Access-Control-Allow-Origin", origin);
   res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, x-anthropic-key, x-gemini-key");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type, x-anthropic-key, x-gemini-key, x-device-fingerprint");
   res.headers.set("Vary", "Origin");
   return res;
 }
@@ -295,16 +301,28 @@ function buildHeuristic(ctx: AssistantContext, question = ""): AssistantResponse
 }
 
 async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, question: string): Promise<AssistantResponse | null> {
-  const { provider, key } = selectProvider(req);
+  // SECURITY: allowTampuFallback default-false desde sprint 05/2026
+  const { provider, key, source } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) return null;
   const userMessage = `Pregunta del viajero: "${question}"\n\nEstado actual:\n${JSON.stringify(ctx, null, 2)}`;
   const text = await callLLM(provider, key, {
     system: SYSTEM_PROMPT,
     userMessage,
-    maxTokens: 1024,
+    maxTokens: MAX_TOKENS_HARD,
     timeoutMs: 25_000,
   });
   if (!text) return null;
+
+  // Log usage para analytics + circuit breaker
+  const tokensIn = Math.ceil((userMessage.length + SYSTEM_PROMPT.length) / 4);
+  const tokensOut = MAX_TOKENS_HARD;
+  void recordProxyCall(source === "byok" ? "byok:assistant" : "fallback:assistant", {
+    endpoint: "/api/assistant",
+    tokensIn,
+    tokensOut,
+    costUsd: estimateCostUsd(tokensIn, tokensOut, "sonnet"),
+  }).catch((e) => captureException(e, { tag: "assistant.record" }));
+
   try {
     const stripped = text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
     const parsed = JSON.parse(stripped) as { answer: string; suggestions: Suggestion[] };
@@ -325,7 +343,8 @@ export async function POST(req: NextRequest) {
   // Solo cuando hay key Anthropic — Claude decide qué tools llamar
   // (search_destination, find_in_vault, estimate_flight_price, get_trip_summary).
   // Loop hasta end_turn o max 4 iteraciones.
-  const { provider, key } = selectProvider(req);
+  // SECURITY: allowTampuFallback default-false desde sprint 05/2026
+  const { provider, key } = selectProvider(req, { allowTampuFallback: false });
   if (provider === "anthropic" && key) {
     const agenticCtx: AgenticContext = {
       trip_name: body.context.trip_name,
