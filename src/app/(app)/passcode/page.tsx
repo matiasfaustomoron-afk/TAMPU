@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * lockout, UI de fuerza).
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,7 @@ function formatRemaining(ms: number): string {
   return `${h} h ${m % 60} min`;
 }
 
-export default function PasscodePage() {
+function PasscodeContent() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/settings";
@@ -412,6 +412,14 @@ export default function PasscodePage() {
         </Card>
       )}
     </div>
+  );
+}
+
+export default function PasscodePage() {
+  return (
+    <Suspense fallback={null}>
+      <PasscodeContent />
+    </Suspense>
   );
 }
 
