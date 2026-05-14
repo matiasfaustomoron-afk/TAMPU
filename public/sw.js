@@ -47,7 +47,7 @@
 // (chunks, server actions inlineadas, etc.). El SW usa skipWaiting + clients.claim
 // (líneas ~97 y activate handler) así que el bump invalida cache y trae el bundle
 // nuevo en el primer hit. Sin bump, los users con SW instalado siguen con cache stale.
-const VERSION = "tampu-v21-fix-errors-batch-2026-05-14";
+const VERSION = "tampu-v22-trips-rpc-2026-05-14";
 const SHELL_CACHE  = `${VERSION}-shell`;
 const PAGES_CACHE  = `${VERSION}-pages`;
 const ASSETS_CACHE = `${VERSION}-assets`;

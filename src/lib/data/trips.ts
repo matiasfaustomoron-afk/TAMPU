@@ -26,28 +26,25 @@ export async function fetchCities(db: SupabaseClient, tripId: string): Promise<C
 }
 
 export async function insertTrip(db: SupabaseClient, trip: Omit<Trip, "id" | "user_id" | "created_at" | "updated_at" | "is_active">): Promise<Trip | null> {
-  // CRITICAL: la columna `user_id` es NOT NULL + RLS exige user_id = auth.uid().
-  // Tenemos que obtenerlo de la sesión antes de insertar. Sin esto el insert
-  // fallaba silenciosamente con "null value in column user_id violates not-null
-  // constraint" y el viaje "desaparecía" desde la perspectiva del user.
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) throw new Error("No hay sesión activa — no se puede crear el viaje. Volvé a hacer login.");
-
-  // Insert FIRST (más importante). Después desactivamos los otros — si falla el
-  // insert, el user no queda sin trip activo (rollback implícito por orden).
-  const { data, error } = await db.from("trips")
-    .insert({ ...trip, user_id: user.id, is_active: true })
-    .select()
-    .maybeSingle();
+  // FIX DEFINITIVO: usar la RPC create_trip (migration 00030) en lugar de
+  // .insert() client-side. La RPC corre security definer server-side:
+  //   - auth.uid() del JWT (siempre confiable, sin race conditions)
+  //   - user_id = auth.uid() (no se confía en input del client)
+  //   - desactiva otros trips activos atómicamente
+  //   - el trigger tampu_add_owner_membership crea la membership automáticamente
+  //
+  // Reemplaza el flow anterior .insert() que fallaba con RLS quirks (error 42501)
+  // por motivos que no pudimos diagnosticar 100% (probablemente cookies stale o
+  // mismatch con el nuevo formato sb_publishable_ de Supabase keys).
+  const { data, error } = await db.rpc("create_trip", { trip_data: trip });
   if (error) throw error;
-  if (!data) throw new Error("Insert ok pero la DB no devolvió la fila — race condition o RLS bloqueando el select.");
+  if (!data) throw new Error("RPC create_trip no devolvió data — debug en Postgres logs");
 
-  // Now safe to deactivate previous active trips (solo los del user).
-  await db.from("trips").update({ is_active: false })
-    .eq("user_id", user.id)
-    .neq("id", data.id);
-
-  return data;
+  // La RPC devuelve un single row (returns trips, no setof). Supabase RPC
+  // envuelve scalar returns en un array de 1 elemento solo si la función es
+  // marked como `returns setof`. En este caso es `returns trips` (single),
+  // así que `data` es el row directo.
+  return data as Trip;
 }
 
 export async function setActiveTrip(db: SupabaseClient, tripId: string): Promise<Trip | null> {
