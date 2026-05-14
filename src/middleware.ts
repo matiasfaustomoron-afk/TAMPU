@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 // Páginas públicas (landing + legal + auth flow).
 const PUBLIC_PATHS = [
+  "/",        // Root — app/page.tsx decide si redirige a /welcome (anon) o /today (auth)
   "/login",
   "/auth/callback",
   "/privacy",
