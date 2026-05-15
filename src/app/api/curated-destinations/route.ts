@@ -18,23 +18,11 @@ import { createSupabaseService } from "@/lib/supabase/service";
 // Beneficio: cold start ~10x más rápido + edge-region routing → menor TTFB global.
 export const runtime = "edge";
 
-// Columnas que efectivamente consume el client (AI agentic + Discover UI + MCP).
-// `select("*")` traía 30+ columnas internas (audit, embeddings, internal_notes)
-// inflando el payload. Tighten para reducir egress + serialize cost.
-const SELECT_COLUMNS = [
-  "id",
-  "slug",
-  "name",
-  "country",
-  "category",
-  "premium_level",
-  "vibe_tags",
-  "hero_photo_url",
-  "summary",
-  "view_count",
-  "best_months",
-  "created_at",
-].join(",");
+// NOTA: Iter 7 quiso tighten select a columnas específicas para reducir egress,
+// pero las columnas reales de `curated_destinations` no se verificaron contra
+// migration → "column id does not exist" en prod. Reverted to `*` por seguridad.
+// TODO Iter 8: auditar el shape real de la tabla y migrar a SELECT_COLUMNS.
+const SELECT_COLUMNS = "*";
 
 export async function GET(req: NextRequest) {
   const sb = createSupabaseService();
