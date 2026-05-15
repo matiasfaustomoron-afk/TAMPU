@@ -477,3 +477,9 @@ Commit Iter 5: `4b66b1d`.
 
 Commit Iter 6: `720cfb5`.
 
+---
+
+## LOOP STOPPED — 6 iteraciones reales completadas
+
+**Detenido por el founder** (2026-05-15T17:50Z). Cron `ae9d8198` cancelado. Ejecuté 6 iteraciones de las 8 planeadas (75%). Resumen consolidado abajo en el commit posterior — `docs/AUTONOMOUS-LOOP-SUMMARY.md`.
+
