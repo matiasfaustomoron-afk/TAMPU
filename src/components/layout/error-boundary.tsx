@@ -13,7 +13,7 @@ interface State {
   errorId: string | null;
 }
 
-function reportError(err: Error, info: { componentStack?: string | null }) {
+function logBoundaryError(err: Error, info: { componentStack?: string | null }) {
   const payload = {
     name: err.name,
     message: err.message,
@@ -44,7 +44,7 @@ export class GlobalErrorBoundary extends Component<{ children: ReactNode }, Stat
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
-    reportError(error, info);
+    logBoundaryError(error, info);
   }
 
   reset = () => this.setState({ error: null, errorId: null });

@@ -12,9 +12,3 @@ export async function mutateTask(db: SupabaseClient, id: string, updates: Partia
   if (error) throw error;
   return data;
 }
-
-export async function insertTask(db: SupabaseClient, task: Omit<Task, "id" | "created_at" | "updated_at">): Promise<Task | null> {
-  const { data, error } = await db.from("tasks").insert(task).select().maybeSingle();
-  if (error) throw error;
-  return data;
-}

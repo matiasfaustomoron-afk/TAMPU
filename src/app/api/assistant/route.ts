@@ -130,7 +130,7 @@ function buildHeuristic(ctx: AssistantContext, question = ""): AssistantResponse
       const top = scored.slice(0, 3);
       return {
         source: "heuristic",
-        answer: `Encontré ${top.length} archivo${top.length > 1 ? "s" : ""} en tu Vault. Abrí el primero o probá los otros.`,
+        answer: `Encontré ${top.length} archivo${top.length > 1 ? "s" : ""} en tus Documentos. Abrí el primero o probá los otros.`,
         suggestions: top.map(s => ({
           title: s.f.name,
           detail: `${s.f.category}${s.f.notes ? ` · ${s.f.notes}` : ""}`,
@@ -142,8 +142,8 @@ function buildHeuristic(ctx: AssistantContext, question = ""): AssistantResponse
     if (keywords.length > 0) {
       return {
         source: "heuristic",
-        answer: `No encontré nada en el Vault con esas palabras. Si todavía no lo subiste, andá a /vault y subí el archivo.`,
-        suggestions: [{ title: "Subir al Vault", detail: "Boarding, pasaporte, seguro, recibos", priority: "medium", deep_link: "/vault" }],
+        answer: `No encontré nada en tus Documentos con esas palabras. Si todavía no lo subiste, andá a /vault y subí el archivo.`,
+        suggestions: [{ title: "Subir a Documentos", detail: "Boarding, pasaporte, seguro, recibos", priority: "medium", deep_link: "/vault" }],
       };
     }
   }
@@ -382,7 +382,15 @@ export async function POST(req: NextRequest) {
       vault: body.context.vault,
       reservations: body.context.reservations,
     };
-    const agentic = await runAgenticAssistant(key, body.question, agenticCtx);
+    // withRetry agora rethrowea 401 (Anthropic key inválida). El agentic loop
+    // puede tirar — wrappeamos para devolver null y caer al heurístico.
+    let agentic;
+    try {
+      agentic = await runAgenticAssistant(key, body.question, agenticCtx);
+    } catch (e) {
+      console.warn("[assistant] runAgenticAssistant threw, falling back to heuristic:", e);
+      agentic = null;
+    }
     if (agentic) {
       // Record usage REAL del agentic loop (multi-turn).
       const tokensIn = agentic.usage.inputTokens;

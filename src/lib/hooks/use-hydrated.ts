@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, useCallback, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const emptySubscribe = () => () => {};
 
@@ -14,12 +14,4 @@ export function useHydrated(): boolean {
     () => true,
     () => false
   );
-}
-
-/**
- * Forces a component re-render. Useful after mutations.
- */
-export function useForceUpdate() {
-  const [, setTick] = useState(0);
-  return useCallback(() => setTick((t) => t + 1), []);
 }

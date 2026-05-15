@@ -121,7 +121,10 @@ async function llmParse(
   // SECURITY: el endpoint recibe texto crudo de emails; aplicamos `maskPII`
   // ANTES de mandar al provider para no exfiltrar tarjetas/DNI/CUIT.
   const masked = maskPII(text);
-  const { provider, key } = selectProvider(req);
+  // SECURITY: explicit opt-out del Tampu fallback — este endpoint recibe
+  // emails crudos pegados (puede tener varios kB de contenido), no debe
+  // cargar al budget global de Tampu sin pasar por /api/ai-proxy.
+  const { provider, key } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) return null;
   const rich = await callLLMRich(provider, key, {
     system: SYSTEM,
@@ -162,7 +165,7 @@ export async function POST(req: NextRequest) {
   }
   // Truncamos ANTES de maskPII para no procesar texto que no vamos a usar.
   const text = body.text.slice(0, 16_000);
-  const { key, source } = selectProvider(req);
+  const { key, source } = selectProvider(req, { allowTampuFallback: false });
   let parsed: ParsedBooking | null = null;
   let degraded: { reason: string } | null = null;
   let respProvider: string | null = null;

@@ -20,19 +20,21 @@
 // tarjeta) solo arruinan la respuesta del LLM, no exfiltran data.
 
 const PATTERNS = [
-  // Tarjeta de crédito: 13-16 dígitos con o sin espacios/guiones.
-  // Capturamos antes de IDs porque las CC suelen tener más dígitos.
-  { regex: /\b(?:\d[ -]*?){13,16}\b/g, replacement: "[CARD]" },
+  // Tarjeta de crédito: 4-4-4-4 con espacios/guiones, o 13-16 dígitos seguidos.
+  // El regex viejo (\b(?:\d[ -]*?){13,16}\b) matcheaba mal en strings con
+  // separadores intermedios. Este formato cubre los layouts típicos.
+  { regex: /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b|\b\d{13,16}\b/g, replacement: "[CARD]" },
   // CVV — solo cuando viene precedido del label.
   { regex: /CVV[:\s]*\d{3,4}/gi, replacement: "CVV: [CVV]" },
   // DNI argentino — 7-8 dígitos con label.
   { regex: /\bDNI[:\s]*\d{7,8}\b/gi, replacement: "DNI: [DNI]" },
   // CUIT argentino — formato XX-XXXXXXXX-X.
   { regex: /\b\d{2}-\d{8}-\d\b/g, replacement: "[CUIT]" },
-  // Pasaporte / DNI extranjero — patron genérico: 1-3 letras + 6-9 dígitos.
-  // Esto puede tener falsos positivos (locators tipo "ABC123456"), pero los
-  // locators no son sensibles igual.
-  { regex: /\b[A-Z]{1,3}\d{6,9}\b/g, replacement: "[ID]" },
+  // Pasaporte / DNI extranjero — exige label precedente (passport, pasaporte,
+  // documento, etc) para no over-maskear PNRs/locators de booking que tienen
+  // shape similar (ABC123456). El patrón sin label rompía la extracción de
+  // confirmation codes en parse-booking / parse-email-confirmation.
+  { regex: /\b(?:passport|pasaporte|pasap\.?|documento)[:\s]+[A-Z]{1,3}\d{6,9}\b/gi, replacement: "[ID]" },
 ] as const;
 
 /**

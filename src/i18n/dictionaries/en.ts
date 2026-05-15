@@ -178,6 +178,7 @@ const en: Dictionary = {
     checkIn: "Check-in",
     checkOut: "Check-out",
     noAccommodation: "No accommodation",
+    tapHint: "Tap for detail",
   },
   documents: {
     title: "Documents & Requirements",
@@ -554,6 +555,7 @@ const en: Dictionary = {
     copied: "Address copied to clipboard",
     noClipboard: "Your browser does not support clipboard copy",
     emptyState: "Send your first email to the alias above",
+    mailtoBody: "Forward your booking emails here",
     status: {
       imported: "Imported",
       failed: "Failed",
@@ -572,6 +574,7 @@ const en: Dictionary = {
     importedBody: "Your reservation is now in the trip.",
     importAnother: "Import another",
     viewMyTrip: "View my trip",
+    pasteEmailPlaceholder: "Paste a confirmation email here. Works with:\n· LATAM, Aerolineas, Gol, Avianca, Copa, JetSmart, Sky\n· Despegar / Decolar / Almundo (full packages)\n· Airbnb, Booking, hotels\n· Insurance, transfers, eSIM, tours\n· In Spanish, Portuguese, English, French, Italian",
   },
 };
 

@@ -52,7 +52,7 @@ export function AddressDisplay({ address, shortId, label = "Dirección del viaje
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
         haptic("light");
-        await navigator.share({ title: "Mi alias Tampu", text: address });
+        await navigator.share({ title: "Mi dirección Tampu", text: address });
       } catch {
         // user dismissed share sheet — no toast.
       }

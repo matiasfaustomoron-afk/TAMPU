@@ -3,17 +3,20 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
+import { Sheet } from "@/components/ios";
+import { toast } from "@/components/ios/toast";
 import { StatusBadge, EmptyState, SectionHeader } from "@/components/shared";
 import { useActiveTrip, useReservations, useMutations } from "@/lib/hooks/use-trip-data";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
-import { RESERVATION_TYPES, RESERVATION_STATUSES } from "@/lib/config/constants";
+import { RESERVATION_TYPES, RESERVATION_STATUSES, CURRENCIES } from "@/lib/config/constants";
 import { attachmentsForReservation } from "@/lib/domain/attachment-linker";
 import { AttachDocButton } from "@/components/ios/attach-doc-button";
 import { CommentButton } from "@/components/comments/comment-button";
 import { TripPollsSection } from "@/components/polls/trip-polls-section";
-import { Bookmark, Plane, Home, Train, Bus, MapPin, Shield, Wifi, MoreHorizontal, AlertTriangle, Edit, Check, X, Paperclip } from "lucide-react";
-import type { Reservation, ReservationStatus, Attachment } from "@/lib/types/database";
+import { AddToWalletButton } from "@/components/passes/AddToWalletButton";
+import { Bookmark, Plane, Home, Train, Bus, MapPin, Shield, Wifi, MoreHorizontal, AlertTriangle, Edit, Check, X, Paperclip, Plus } from "lucide-react";
+import type { Reservation, ReservationStatus, ReservationType, Attachment } from "@/lib/types/database";
 
 const TI: Record<string, React.ReactNode> = {
   flight: <Plane className="w-4 h-4" />,
@@ -31,12 +34,77 @@ export default function ReservationsPage() {
   const { client, mode } = useSupabase();
   const { data: trip } = useActiveTrip();
   const { data: reservations, loading, refetch } = useReservations(trip?.id);
-  const { updateReservation } = useMutations();
+  const { updateReservation, addReservation } = useMutations();
   const [ft, setFt] = useState("all");
   const [exp, setExp] = useState<string | null>(null);
   const [edit, setEdit] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Reservation>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Sheet de "+ Nueva reserva": 6 campos mínimos. El resto (criticality,
+  // exchange_rate, etc.) se derivan o quedan en defaults — el user puede
+  // editar luego desde la fila expandida.
+  const [addOpen, setAddOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newRes, setNewRes] = useState<{
+    type: ReservationType;
+    provider: string;
+    description: string;
+    use_date: string;
+    original_amount: string;
+    original_currency: string;
+  }>({
+    type: "accommodation",
+    provider: "",
+    description: "",
+    use_date: "",
+    original_amount: "",
+    original_currency: "USD",
+  });
+
+  const submitNew = useCallback(async () => {
+    if (!trip) return;
+    if (!newRes.provider.trim() || !newRes.description.trim()) return;
+    const amount = parseFloat(newRes.original_amount) || 0;
+    setAdding(true);
+    try {
+      await addReservation({
+        trip_id: trip.id,
+        type: newRes.type,
+        criticality: "important",
+        provider: newRes.provider.trim(),
+        city_id: null,
+        city_name: null,
+        description: newRes.description.trim(),
+        purchase_date: null,
+        use_date: newRes.use_date || null,
+        use_end_date: null,
+        payment_deadline: null,
+        original_amount: amount,
+        original_currency: newRes.original_currency,
+        exchange_rate: 1,
+        base_amount: amount,
+        status: "pending",
+        confirmation_received: false,
+        locator: null,
+        link: null,
+        contact: null,
+        cancellation_policy: null,
+        is_cancellable: true,
+        notes: null,
+      });
+      toast("Reserva creada", "success");
+      setAddOpen(false);
+      setNewRes({
+        type: "accommodation", provider: "", description: "",
+        use_date: "", original_amount: "", original_currency: "USD",
+      });
+      refetch();
+    } catch (e) {
+      toast((e as Error).message || "Error", "error");
+    } finally {
+      setAdding(false);
+    }
+  }, [trip, newRes, addReservation, refetch]);
 
   // Load attachments to display under each reservation
   useEffect(() => {
@@ -84,7 +152,18 @@ export default function ReservationsPage() {
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
-      <SectionHeader title={t.reservations.title} subtitle={`${stats.confirmed}/${stats.total} ${t.dashboard.confirmed} · ${formatCurrency(stats.totalSpent)} ${t.dashboard.committed.toLowerCase()}`} />
+      <SectionHeader
+        title={t.reservations.title}
+        subtitle={`${stats.confirmed}/${stats.total} ${t.dashboard.confirmed} · ${formatCurrency(stats.totalSpent)} ${t.dashboard.committed.toLowerCase()}`}
+        action={
+          trip ? (
+            <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1">
+              <Plus className="w-3.5 h-3.5" />
+              {t.common.add}
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="flex flex-wrap gap-1.5">
         <button onClick={() => setFt("all")} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${ft === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{t.common.all}</button>
@@ -145,10 +224,18 @@ export default function ReservationsPage() {
                       {r.criticality === "blocker" && p && <span className="text-destructive flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{t.reservations.actionRequired}</span>}
                     </div>
 
-                    <div className="pt-2 flex gap-2">
+                    <div className="pt-2 flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); startEdit(r); }} className="gap-1">
                         <Edit className="w-3 h-3" />Editar estado
                       </Button>
+                      {/* Apple Wallet — solo en vuelos. Si falta el cert
+                          Apple Developer, el endpoint devuelve 503 y la UI
+                          muestra un toast informativo. */}
+                      {r.type === "flight" && (
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <AddToWalletButton reservation={r} />
+                        </span>
+                      )}
                     </div>
 
                     {/* Inline attachment uploader — files live offline in Documentos */}
@@ -230,6 +317,88 @@ export default function ReservationsPage() {
           el componente sugiere "votá entre A y B". */}
       {trip && <TripPollsSection tripId={trip.id} maxShown={3}
         emptyHint={t.polls.emptyAllInactive} />}
+
+      {/* Sheet de creación rápida — 6 campos mínimos. Type/provider/description
+          son obligatorios; fecha/monto/moneda opcionales pero usuales. El resto
+          de los campos (locator, payment_deadline, criticality) se completan
+          luego desde la fila expandida con "Editar estado". */}
+      <Sheet open={addOpen} onClose={() => setAddOpen(false)} title="Nueva reserva">
+        <div className="space-y-3 pb-4">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] uppercase text-muted-foreground">Tipo</label>
+              <SelectNative
+                value={newRes.type}
+                onChange={(e) => setNewRes({ ...newRes, type: e.target.value as ReservationType })}
+                className="mt-1"
+              >
+                {RESERVATION_TYPES.map((tp) => (
+                  <option key={tp.value} value={tp.value}>{tp.label}</option>
+                ))}
+              </SelectNative>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase text-muted-foreground">Proveedor</label>
+              <Input
+                value={newRes.provider}
+                onChange={(e) => setNewRes({ ...newRes, provider: e.target.value })}
+                placeholder="Booking, LATAM, Get Your Guide…"
+                className="mt-1"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase text-muted-foreground">Descripción</label>
+              <Input
+                value={newRes.description}
+                onChange={(e) => setNewRes({ ...newRes, description: e.target.value })}
+                placeholder="Hotel Casa Galería · 3 noches"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase text-muted-foreground">{t.reservations.useDate}</label>
+              <Input
+                type="date"
+                value={newRes.use_date}
+                onChange={(e) => setNewRes({ ...newRes, use_date: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-1">
+              <div>
+                <label className="text-[10px] uppercase text-muted-foreground">Monto</label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={newRes.original_amount}
+                  onChange={(e) => setNewRes({ ...newRes, original_amount: e.target.value })}
+                  placeholder="0"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase text-muted-foreground">Moneda</label>
+                <SelectNative
+                  value={newRes.original_currency}
+                  onChange={(e) => setNewRes({ ...newRes, original_currency: e.target.value })}
+                  className="mt-1"
+                >
+                  {CURRENCIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </SelectNative>
+              </div>
+            </div>
+          </div>
+          <Button
+            onClick={submitNew}
+            disabled={adding || !newRes.provider.trim() || !newRes.description.trim()}
+            className="w-full"
+          >
+            {adding ? t.common.loading : t.common.save}
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

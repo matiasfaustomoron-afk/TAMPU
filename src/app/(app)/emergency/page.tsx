@@ -39,7 +39,7 @@ export default function EmergencyPage() {
       <div className="animate-fade-in">
         <LargeTitle title="SOS" eyebrow="Emergencia" serif />
         <div className="mt-8">
-          <EmptyState title="Sin datos de emergencia" icon={<AlertTriangle className="w-8 h-8" />} />
+          <EmptyState title="Sin datos de emergencia" icon={<AlertTriangle className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />
         </div>
       </div>
     );
@@ -203,7 +203,7 @@ export default function EmergencyPage() {
                 title={d.name}
                 value={
                   d.has_offline_copy
-                    ? <Pill tone="ok">OK</Pill>
+                    ? <Pill tone="ok">Listo</Pill>
                     : <Pill tone="alert">Descargar</Pill>
                 }
                 href="/vault"

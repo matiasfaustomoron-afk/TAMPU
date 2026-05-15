@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   "/privacy",
   "/terms",
   "/welcome", // Landing — anon users tienen que verlo para signup
+  "/share",   // Invite landing — anon users que llegan vía link de invitación
 ];
 
 // API routes que son llamadas por sistemas externos (webhooks, cron) o

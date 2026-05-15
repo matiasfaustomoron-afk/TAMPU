@@ -76,9 +76,11 @@ export default function ItineraryPage() {
   }, [days]);
 
   // Realtime: cualquier cambio de cualquier miembro del trip refetchea las listas.
-  useTripRealtime(trip?.id, () => {
-    refetchDays();
-    refetchReservations();
+  // Reservations dispara reservations refetch. Cities afecta el rendering de
+  // los días (city_name), así que también refetcheamos days en ese caso.
+  useTripRealtime(trip?.id, {
+    reservations: () => { refetchReservations(); },
+    cities: () => { refetchDays(); },
   });
   const list = useMemo(() => days ?? [], [days]);
   const flights = useMemo(
@@ -321,7 +323,7 @@ export default function ItineraryPage() {
           <section className="px-4 mt-6">
             <div className="flex items-baseline justify-between mb-2 px-1">
               <p className="ios-eyebrow !p-0">Vista mes</p>
-              <p className="text-[11px] text-muted-foreground">Tap para detalle</p>
+              <p className="text-[11px] text-muted-foreground">{t.itinerary.tapHint}</p>
             </div>
             <TripCalendar
               days={list}

@@ -314,7 +314,7 @@ export default function SettingsPage() {
       }
       if (secStatus.plainVaultBlobs > 0) {
         const r = await migrateLegacyVaultToEncrypted();
-        lines.push(`Vault: ${r.migrated} cifrados, ${r.skipped} ya estaban, ${r.failed} fallaron`);
+        lines.push(`Documentos: ${r.migrated} cifrados, ${r.skipped} ya estaban, ${r.failed} fallaron`);
       }
       toast(lines.join(" · ") || "Nada para migrar", "success");
       await refreshSec();
@@ -493,7 +493,7 @@ export default function SettingsPage() {
               <p className="text-[10px] text-muted-foreground leading-relaxed">
                 PBKDF2-SHA256 · 600.000 iteraciones · AES-GCM(256). La master key vive solo en RAM.
                 Lo que NO se cifra: IDs (UUIDs), mime type, tamaño y fecha de los archivos
-                (metadata, no contenido). Esto permite listar el Vault sin pedir passcode.
+                (metadata, no contenido). Esto permite listar tus Documentos sin pedir passcode.
               </p>
             </>
           )}

@@ -41,7 +41,21 @@ function colorForUser(id: string): string {
   return COLORS[h % COLORS.length];
 }
 
-export function useTripRealtime(tripId: string | null | undefined, onChange?: () => void): {
+/**
+ * Callback map: cada tabla dispara su propio handler. Esto reemplaza el
+ * callback único anterior (() => void) que colapsaba las 4 tablas — los
+ * callers tenían que refetchear TODO en cada evento, incluso si solo cambió
+ * una entity. Con el map, /itinerary refetchea solo days+reservations sin
+ * tocar expenses/tasks.
+ */
+export interface TripRealtimeHandlers {
+  reservations?: () => void;
+  expenses?: () => void;
+  tasks?: () => void;
+  cities?: () => void;
+}
+
+export function useTripRealtime(tripId: string | null | undefined, onChange?: TripRealtimeHandlers): {
   members: PresenceMember[];
   connected: boolean;
 } {
@@ -78,38 +92,32 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: ()
       });
 
       // ─── DB changes ───
+      // Dispatcher: cada tabla dispara solo su handler correspondiente.
+      const dispatch = (table: keyof TripRealtimeHandlers) => {
+        recordSyncSuccess();
+        onChangeRef.current?.[table]?.();
+      };
+
       channel
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "reservations", filter: `trip_id=eq.${tripId}` },
-          () => {
-            recordSyncSuccess();
-            onChangeRef.current?.();
-          },
+          () => dispatch("reservations"),
         )
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "expenses", filter: `trip_id=eq.${tripId}` },
-          () => {
-            recordSyncSuccess();
-            onChangeRef.current?.();
-          },
+          () => dispatch("expenses"),
         )
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "tasks", filter: `trip_id=eq.${tripId}` },
-          () => {
-            recordSyncSuccess();
-            onChangeRef.current?.();
-          },
+          () => dispatch("tasks"),
         )
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "cities", filter: `trip_id=eq.${tripId}` },
-          () => {
-            recordSyncSuccess();
-            onChangeRef.current?.();
-          },
+          () => dispatch("cities"),
         );
 
       // ─── Presence ───

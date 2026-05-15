@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import Link from "next/link";
 import { LargeTitle, Sheet } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
 import { Button } from "@/components/ui/button";
@@ -346,7 +347,7 @@ export default function JournalPage() {
     return (
       <div className="animate-fade-in">
         <LargeTitle title="Diario" serif />
-        <div className="mt-8"><EmptyState title="Sin viaje activo" icon={<BookOpen className="w-8 h-8" />} /></div>
+        <div className="mt-8"><EmptyState title="Sin viaje activo" icon={<BookOpen className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} /></div>
       </div>
     );
   }

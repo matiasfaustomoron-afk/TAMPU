@@ -537,7 +537,7 @@ export default function ImportPage() {
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={`Pegá acá un email de confirmación. Funciona con:\n· LATAM, Aerolineas, Gol, Avianca, Copa, JetSmart, Sky\n· Despegar / Decolar / Almundo (paquetes completos)\n· Airbnb, Booking, hoteles\n· Seguros, transfers, eSIM, tours\n· En español, portugués, inglés, francés, italiano`}
+              placeholder={t.import.pasteEmailPlaceholder}
               className="min-h-[200px] text-[13px] leading-relaxed border-0 bg-transparent resize-none focus-visible:ring-0"
               aria-label="Texto del email a parsear"
             />

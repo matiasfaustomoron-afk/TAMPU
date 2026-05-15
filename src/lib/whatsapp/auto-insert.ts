@@ -250,13 +250,16 @@ function pickLocator(item: ParsedWhatsAppItem): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-/** Criticality default por tipo. */
+/** Criticality default por tipo.
+ *  - flight / hotel: columna vertebral del viaje → 'important'.
+ *  - transport: traslados / buses / trenes → también 'important' (perderlos
+ *    rompe el itinerario).
+ *  - reservation: tours, restaurants, etc — 'nice_to_have' por default, el
+ *    user puede subirlo en la UI si quiere. */
 function criticalityFor(item: ParsedWhatsAppItem): Criticality {
-  // Vuelos y alojamiento son la columna vertebral del viaje → important.
-  // El resto es nice-to-have / important moderado → medium = important para
-  // que el user pueda subirlo en la UI si lo necesita.
   if (item.type === "flight" || item.type === "hotel") return "important";
-  return "important";
+  if (item.type === "transport") return "important";
+  return "nice_to_have";
 }
 
 // ─── core ───────────────────────────────────────────────────────────────

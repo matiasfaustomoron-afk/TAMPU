@@ -324,9 +324,10 @@ export async function parseWhatsAppText(
     const r = await callGeminiFlash(gemKey, userMessage);
     if (r) {
       const parsed = normalizeParsed(safeParseJson(r.text));
-      // Gemini Flash es ~3x más barato que Haiku; usamos pricing aproximado
-      // (USD 0.075 / 1M input, USD 0.30 / 1M output).
-      const costUsd = r.tokensIn * 0.000000075 + r.tokensOut * 0.0000003;
+      // Pricing centralizado en `estimateCostUsd` — antes acá hardcodeábamos
+      // USD 0.075/1M in + USD 0.30/1M out, lo que bypasseaba cualquier update
+      // del pricing table en rate-limit.ts.
+      const costUsd = estimateCostUsd(r.tokensIn, r.tokensOut, "gemini-2.0-flash");
       void recordProxyCall(fpId, {
         endpoint: "whatsapp-ingestion",
         tokensIn: r.tokensIn,

@@ -3,7 +3,7 @@ import type { Trip } from "@/lib/types/database";
 
 // Columnas mínimas para list views de trips. fetchTrips alimenta el switcher,
 // /trips, dashboard sidebar — no necesitan id de RLS internals ni timestamps
-// para render. fetchTrip (single) sigue usando "*" porque alimenta edit views.
+// para render.
 const TRIP_LIST_COLUMNS =
   "id, name, destination, start_date, end_date, status, is_active, base_currency, total_budget, contingency_percent, contingency_amount, alert_days_warning, alert_days_critical, budget_warning_threshold, budget_danger_threshold, description, created_at, updated_at, user_id";
 
@@ -17,12 +17,6 @@ export async function fetchActiveTrip(db: SupabaseClient): Promise<Trip | null> 
   const { data, error } = await db.from("trips").select(TRIP_LIST_COLUMNS).eq("is_active", true).limit(1).maybeSingle();
   if (error) throw error;
   return data as Trip | null;
-}
-
-export async function fetchTrip(db: SupabaseClient, id: string): Promise<Trip | null> {
-  const { data, error } = await db.from("trips").select("*").eq("id", id).maybeSingle();
-  if (error) throw error;
-  return data;
 }
 
 // fetchCities canonical vive en entities.ts. La duplicada se eliminó.

@@ -10,6 +10,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useAllTrips } from "@/lib/hooks/use-trip-data";
+import { useSupabase } from "@/lib/context/supabase-provider";
 import { loadDemoTrip, hasUserTrip } from "@/lib/demo/papua-seoul-trip";
 import { toast } from "@/components/ios/toast";
 import { track, EVENTS } from "@/lib/analytics";
@@ -39,6 +40,7 @@ export default function WelcomePage() {
   const router = useRouter();
   const t = useT();
   const { data: trips, loading } = useAllTrips();
+  const { user, loading: authLoading } = useSupabase();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const hasTrips = !loading && trips && trips.length > 0;
@@ -49,6 +51,15 @@ export default function WelcomePage() {
   useEffect(() => {
     if (hasTrips && !confirmOpen) router.replace("/today");
   }, [hasTrips, router, confirmOpen]);
+
+  // Si el user está autenticado pero todavía no tiene ningún viaje, lo
+  // mandamos directo al wizard de creación. Welcome page tiene sentido para
+  // anon (signup CTA), no para auth-without-trip — ese caso necesita acción.
+  useEffect(() => {
+    if (!authLoading && !loading && user && !hasTrips && !confirmOpen) {
+      router.replace("/trips?wizard=1");
+    }
+  }, [authLoading, loading, user, hasTrips, confirmOpen, router]);
 
   useEffect(() => {
     track(EVENTS.ONBOARDING_START);

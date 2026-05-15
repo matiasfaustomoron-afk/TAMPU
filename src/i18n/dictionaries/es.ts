@@ -194,6 +194,7 @@ const es = {
     checkIn: "Entrada",
     checkOut: "Salida",
     noAccommodation: "Sin alojamiento",
+    tapHint: "Tocá para detalle",
   },
 
   // ─── DOCUMENTS ───
@@ -636,6 +637,7 @@ const es = {
     copied: "Dirección copiada al portapapeles",
     noClipboard: "Tu navegador no soporta copiar al portapapeles",
     emptyState: "Mandá tu primer email al alias de arriba",
+    mailtoBody: "Reenviá tus emails de reservas acá",
     status: {
       imported: "Importado",
       failed: "Falló",
@@ -655,6 +657,7 @@ const es = {
     importedBody: "Tu reserva ya está en el viaje.",
     importAnother: "Importar otra",
     viewMyTrip: "Ver mi viaje",
+    pasteEmailPlaceholder: "Pegá acá un email de confirmación. Funciona con:\n· LATAM, Aerolineas, Gol, Avianca, Copa, JetSmart, Sky\n· Despegar / Decolar / Almundo (paquetes completos)\n· Airbnb, Booking, hoteles\n· Seguros, transfers, eSIM, tours\n· En español, portugués, inglés, francés, italiano",
   },
 } as const;
 

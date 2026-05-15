@@ -179,7 +179,7 @@ async function maybeEncrypt(id: string, blob: Blob): Promise<{ kind: "cipher"; b
   if (!passcodeSet) return { kind: "plain", blob };
   const key = getMasterKey();
   if (!key) {
-    throw new Error("Vault bloqueado · ingresá tu passcode para guardar este archivo");
+    throw new Error("Documentos bloqueados · ingresá tu passcode para guardar este archivo");
   }
   const bytes = await encryptBlob(key, blob, aadFor(id));
   return { kind: "cipher", bytes };
@@ -192,7 +192,7 @@ async function maybeDecrypt(id: string, row: AnyRow): Promise<Blob | null> {
   }
   const key = getMasterKey();
   if (!key) {
-    throw new Error("Vault bloqueado · ingresá tu passcode para abrir este archivo");
+    throw new Error("Documentos bloqueados · ingresá tu passcode para abrir este archivo");
   }
   try {
     return await decryptToBlob(key, row.cipher, row.type, aadFor(id));
@@ -252,7 +252,7 @@ export async function getVaultBlob(id: string): Promise<Blob | null> {
     if (raw.type.startsWith("application/x-tampu-cipher+")) {
       const originalMime = raw.type.slice("application/x-tampu-cipher+".length);
       const key = getMasterKey();
-      if (!key) throw new Error("Vault bloqueado · ingresá tu passcode para abrir este archivo");
+      if (!key) throw new Error("Documentos bloqueados · ingresá tu passcode para abrir este archivo");
       const bytes = new Uint8Array(await raw.arrayBuffer());
       if (!looksEncrypted(bytes)) {
         console.warn("[vault] mime dice cipher pero bytes no parecen cifrados:", id);
@@ -393,7 +393,7 @@ export async function migrateLegacyVaultToEncrypted(): Promise<{ migrated: numbe
   const stats = { migrated: 0, skipped: 0, failed: 0 };
   if (!(await hasPasscode())) return stats;
   const key = getMasterKey();
-  if (!key) throw new Error("Vault bloqueado · ingresá tu passcode antes de migrar");
+  if (!key) throw new Error("Documentos bloqueados · ingresá tu passcode antes de migrar");
 
   if (isSqliteBackend()) {
     // v1: skip — SQLite blobs nuevos nacen cifrados, los viejos se migrarán cuando

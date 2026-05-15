@@ -24,6 +24,7 @@
 
 import { resolveDestinationPhoto } from "@/lib/photos/destination-resolver";
 import { buildAffiliateUrl, isPartnerActive, type Partner } from "@/lib/affiliates/config";
+import { withRetry } from "@/lib/ai/providers";
 
 export interface AgenticContext {
   trip_name: string;
@@ -333,37 +334,49 @@ async function executeAnthropicCall(
   messages: AnthropicMessage[],
   timeoutMs = 25_000,
 ): Promise<AnthropicResponse | null> {
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1500,
-        // Prompt caching: SYSTEM_PROMPT + TOOLS son grandes y se repiten
-        // entre todas las llamadas → cacheamos para descontar ~90% del input
-        // cost en hits subsiguientes (TTL ephemeral ~5min).
-        system: [
-          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-        ],
-        tools: TOOLS,
-        messages,
-      }),
-    });
-    if (!res.ok) {
-      console.warn("[agentic] anthropic call failed:", res.status, await res.text().catch(() => ""));
+  // Envolvemos en `withRetry` para que 429/5xx transient errors reintenten
+  // con backoff exponencial (1s, 2s, 4s). Sin esto, una sola hiccup en
+  // Anthropic durante el loop tool_use rompía la respuesta entera.
+  // 401 (auth) se rethrowa adentro y NO se reintenta.
+  return withRetry(async () => {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 1500,
+          // Prompt caching: SYSTEM_PROMPT + TOOLS son grandes y se repiten
+          // entre todas las llamadas → cacheamos para descontar ~90% del input
+          // cost en hits subsiguientes (TTL ephemeral ~5min).
+          system: [
+            { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+          ],
+          tools: TOOLS,
+          messages,
+        }),
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          const err = new Error("anthropic_unauthorized") as Error & { status?: number };
+          err.status = 401;
+          throw err;
+        }
+        console.warn("[agentic] anthropic call failed:", res.status, await res.text().catch(() => ""));
+        return null;
+      }
+      return (await res.json()) as AnthropicResponse;
+    } catch (err) {
+      if ((err as { status?: number })?.status === 401) throw err;
+      console.warn("[agentic] anthropic exception:", err);
       return null;
     }
-    return (await res.json()) as AnthropicResponse;
-  } catch (err) {
-    console.warn("[agentic] anthropic exception:", err);
-    return null;
-  }
+  });
 }
 
 /**

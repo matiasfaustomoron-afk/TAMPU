@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { LargeTitle, IOSSection, IOSRow, IOSFeatureCard, StatChip } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
+import { Button } from "@/components/ui/button";
 import { useCommandCenter } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
 import { Calendar, Clock, MapPin, TrendingUp } from "lucide-react";
@@ -24,7 +26,7 @@ export default function CashflowPage() {
   }, [cc]);
 
   if (loading) return <CashflowSkeleton />;
-  if (!cc) return <div className="px-4 mt-8"><EmptyState title="Sin viaje activo" icon={<Calendar className="w-8 h-8" />} /></div>;
+  if (!cc) return <div className="px-4 mt-8"><EmptyState title="Sin viaje activo" icon={<Calendar className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} /></div>;
 
   const { cashflow, money_in_flight, dashboard } = cc;
   const avgBudgetPerDay = cashflow.total_budget / Math.max(1, dashboard.trip_duration);
@@ -37,7 +39,7 @@ export default function CashflowPage() {
     <div className="animate-fade-in">
       <LargeTitle
         eyebrow="Movimiento diario"
-        title="Movimiento"
+        title="Dinero"
         serif
       />
 

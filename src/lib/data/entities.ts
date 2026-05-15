@@ -64,23 +64,6 @@ export async function fetchBudgetCategories(db: SupabaseClient, tripId: string):
   return data ?? [];
 }
 
-/**
- * Upsert de una categoría de presupuesto. Si la fila existe (mismo trip_id + category),
- * actualiza el monto y label; si no, la crea. Usado por la UI de "Presupuesto" en /expenses.
- */
-export async function upsertBudgetCategory(
-  db: SupabaseClient,
-  payload: { trip_id: string; category: string; label: string; budgeted_amount: number; order_index: number }
-): Promise<BudgetCategory | null> {
-  const { data, error } = await db
-    .from("budget_categories")
-    .upsert(payload, { onConflict: "trip_id,category" })
-    .select()
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
 export async function batchUpsertBudgetCategories(
   db: SupabaseClient,
   rows: Array<{ trip_id: string; category: string; label: string; budgeted_amount: number; order_index: number }>

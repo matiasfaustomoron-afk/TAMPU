@@ -1,7 +1,9 @@
 "use client";
 import { useMemo } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeader, EmptyState, KPICard } from "@/components/shared";
+import { Button } from "@/components/ui/button";
 import { useActiveTrip, useExpenses } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
 import { buildSplitSummary, parseSplitFromNotes, type SplitExpense } from "@/lib/domain/split";
@@ -19,7 +21,7 @@ export default function SplitPage() {
 
   const summary = useMemo(() => buildSplitSummary(splitExpenses), [splitExpenses]);
 
-  if (!trip) return <EmptyState title="Sin viaje" icon={<Users className="w-8 h-8" />} />;
+  if (!trip) return <EmptyState title="Sin viaje" icon={<Users className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />;
 
   const hasSplits = summary.count > 0;
 

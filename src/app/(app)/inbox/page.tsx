@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Inbox, Mail, Check, X, Copy, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import { LargeTitle, IOSSection, IOSFeatureCard, Pill } from "@/components/ios";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared";
 import { useActiveTrip, useMutations } from "@/lib/hooks/use-trip-data";
@@ -142,7 +143,7 @@ export default function InboxPage() {
     return (
       <div className="animate-fade-in">
         <LargeTitle title={t.inbox.title} serif />
-        <EmptyState title="Sin viaje activo" icon={<Inbox className="w-8 h-8" />} />
+        <EmptyState title="Sin viaje activo" icon={<Inbox className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />
       </div>
     );
   }
@@ -180,7 +181,7 @@ export default function InboxPage() {
               <Copy className="w-3.5 h-3.5" /> Copiar
             </Button>
             <a
-              href={`mailto:${address}?subject=Test%20Tampu&body=Forward%20your%20booking%20emails%20here`}
+              href={`mailto:${address}?subject=Test%20Tampu&body=${encodeURIComponent(t.inbox.mailtoBody)}`}
               className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted text-[12px] font-semibold text-foreground"
             >
               Probar

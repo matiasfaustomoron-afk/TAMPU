@@ -1,5 +1,4 @@
 "use client";
-import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/shared";
@@ -10,7 +9,6 @@ import { User, LogOut, Globe, Clock, CreditCard } from "lucide-react";
 export default function ProfilePage() {
   const { t, locale } = useI18n();
   const { user, mode, client } = useSupabase();
-  const router = useRouter();
   const handleLogout = async () => {
     if (client) await client.auth.signOut({ scope: "global" });
     // window.location.href forces full reload so middleware sees the cleared cookies.

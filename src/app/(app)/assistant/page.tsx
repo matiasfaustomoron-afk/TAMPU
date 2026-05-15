@@ -198,7 +198,7 @@ export default function AssistantPage() {
   }, [cc, vault, reservations, cities, location]);
 
   if (loading) return <AssistantSkeleton />;
-  if (!cc) return <div className="px-4 mt-8"><EmptyState title="Sin viaje activo" icon={<Sparkles className="w-8 h-8" />} /></div>;
+  if (!cc) return <div className="px-4 mt-8"><EmptyState title="Sin viaje activo" icon={<Sparkles className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} /></div>;
 
   return (
     <div className="animate-fade-in">

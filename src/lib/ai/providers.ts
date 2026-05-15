@@ -122,8 +122,12 @@ export async function callLLMRich(
  * - Reintenta hasta 2 veces (3 attempts total) con backoff 1s, 2s, 4s.
  * - 401 NO se reintenta (es un error de auth, no transient).
  * - Honra `retry-after` header si el upstream lo manda.
+ *
+ * Exportada para que callers que hacen fetch directo a Anthropic/Gemini
+ * (ej. `lib/ai/agentic.ts` con tool_use loop) puedan envolver sus llamadas
+ * sin re-implementar la lógica.
  */
-async function withRetry<T>(fn: () => Promise<T | null>, retries = 2): Promise<T | null> {
+export async function withRetry<T>(fn: () => Promise<T | null>, retries = 2): Promise<T | null> {
   let lastErr: unknown = null;
   for (let i = 0; i <= retries; i++) {
     try {
@@ -133,6 +137,9 @@ async function withRetry<T>(fn: () => Promise<T | null>, retries = 2): Promise<T
       if (res !== null || i === retries) return res;
     } catch (e: unknown) {
       lastErr = e;
+      // 4xx no se reintenta (auth inválida, bad request, etc.) — tirar inmediato.
+      const status = (e as { status?: number })?.status;
+      if (status && status >= 400 && status < 500) throw e;
       if (i === retries) throw e;
     }
     const waitMs = 1000 * Math.pow(2, i);

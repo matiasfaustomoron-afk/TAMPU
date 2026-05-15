@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Users, UserPlus, Check, X, Loader2, Mail, Shield, Eye } from "lucide-react";
 import { LargeTitle, Sheet } from "@/components/ios";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,12 @@ export default function SharePage() {
   const [role, setRole] = useState<"editor" | "viewer">("editor");
   const [inviting, setInviting] = useState(false);
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
+  // Deep-link via ?invite=<member_id>: scroll a la fila + highlight ring
+  // hasta que el user interactúa. Construido para los links de email inbound.
+  const searchParams = useSearchParams();
+  const inviteParam = searchParams.get("invite");
+  const memberRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Detect current user
   useEffect(() => {
@@ -99,6 +106,22 @@ export default function SharePage() {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  // Cuando la lista llega y el query param `invite` está, hacemos scroll a la
+  // fila del miembro y la resaltamos con un ring. Solo dispara una vez por
+  // navigation (limpiamos highlight si el user clickea fuera).
+  useEffect(() => {
+    if (!inviteParam) return;
+    if (members.length === 0) return;
+    const target = members.find((m) => m.id === inviteParam);
+    if (!target) return;
+    const el = memberRefs.current[target.id];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(target.id);
+    const t = window.setTimeout(() => setHighlightedId(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [inviteParam, members]);
 
   const isOwner = !!members.find(
     (m) => m.user_id === me?.id && m.role === "owner" && m.status === "active",
@@ -279,8 +302,13 @@ export default function SharePage() {
             {members.map((m) => {
               const isMe = m.user_id === me?.id;
               const RoleIcon = m.role === "viewer" ? Eye : m.role === "owner" ? Shield : UserPlus;
+              const isHighlighted = highlightedId === m.id;
               return (
-                <div key={m.id} className="ios-card p-4">
+                <div
+                  key={m.id}
+                  ref={(el) => { memberRefs.current[m.id] = el; }}
+                  className={`ios-card p-4 transition-shadow ${isHighlighted ? "ring-2 ring-primary" : ""}`}
+                >
                   <div className="flex items-start gap-3">
                     <span className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${ROLE_TONE[m.role]}`}>
                       <RoleIcon className="w-5 h-5" />

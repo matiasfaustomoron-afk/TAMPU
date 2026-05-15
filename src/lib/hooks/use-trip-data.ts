@@ -85,6 +85,11 @@ interface QueryShape<T> {
   refetch: () => void;
 }
 
+// TODO: split into useQueryList<T[]> + useQueryOne<T>
+// Currently this wrapper collapses arrays into `T | null`, which forces callers
+// to handle null on what are effectively always [] for list queries. Splitting
+// preserves the empty-array invariant for lists and keeps `T | null` for the
+// single-entity queries (activeTrip), but requires touching ~10 caller hooks.
 function useQuery<T>(
   key: readonly unknown[],
   fn: () => Promise<T>,

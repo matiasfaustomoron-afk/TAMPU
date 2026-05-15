@@ -130,7 +130,9 @@ interface LLMParseEnvelope {
 }
 
 async function llmParse(req: NextRequest, text: string): Promise<LLMParseEnvelope | null> {
-  const { provider, key } = selectProvider(req);
+  // SECURITY: explicit opt-out — emails crudos pueden ser muy grandes, no
+  // queremos que carguen al budget global de Tampu sin pasar por /api/ai-proxy.
+  const { provider, key } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) return null;
 
   // SECURITY: email crudo puede traer tarjetas/IDs — `maskPII` antes de salir.
@@ -211,7 +213,7 @@ export async function POST(req: NextRequest) {
   }
 
   const text = body.text;
-  const { key, source: keySource } = selectProvider(req);
+  const { key, source: keySource } = selectProvider(req, { allowTampuFallback: false });
   const warnings: string[] = [];
 
   // 1) Intentar LLM

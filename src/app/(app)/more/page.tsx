@@ -103,7 +103,7 @@ export default function MorePage() {
         <IOSRow icon={<Mail className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-mostaza"
           title="Inbox" subtitle="Reenviá emails a Tampu" href="/inbox" chevron />
         <IOSRow icon={<Lock className="w-4 h-4" />} iconBg="tampu-icon tampu-icon-piedra"
-          title="Passcode" subtitle="Cifrado at-rest del Vault" href="/passcode" chevron />
+          title="Passcode" subtitle="Cifrado at-rest de tus Documentos" href="/passcode" chevron />
       </IOSSection>
 
       {/* "Panel completo" (/dashboard) y "Resumen imprimible" (/book) fueron eliminados

@@ -188,17 +188,19 @@ export default function VaultPage() {
     track(EVENTS.VAULT_UPLOAD, { category: uploadCategory, size_kb: Math.round(selectedFile.size / 1024) });
 
     if (mode === "online" && client) {
-      const path = `${trip.user_id}/${trip.id}/${Date.now()}_${selectedFile.name}`;
+      // RLS de attachments es `user_id = auth.uid()`. Cuando el uploader es
+      // un editor invitado al trip (no el owner), trip.user_id != auth.uid()
+      // → RLS rechaza. Obtenemos el caller real de la sesión ANTES de subir
+      // para usar su id en el storage path también (consistente con la policy
+      // de storage que matchea por prefix `<auth.uid()>/...`).
+      const { data: { user: callerUser } } = await client.auth.getUser();
+      if (!callerUser) { alert("Sesión expirada. Volvé a hacer login."); setUploading(false); return; }
+      const path = `${callerUser.id}/${trip.id}/${Date.now()}_${selectedFile.name}`;
       const { error: uploadErr } = await client.storage.from("travel-vault").upload(path, selectedFile);
       if (uploadErr) { alert(uploadErr.message); setUploading(false); return; }
       // Manual override > IA match
       const manual = manualReservationId ? reservations?.find(r => r.id === manualReservationId) : null;
       const match = manual ? { reservation: manual } : (reservations?.length ? findBestReservationMatch(extractedFields, reservations) : null);
-      // RLS de attachments es `user_id = auth.uid()`. Cuando el uploader es
-      // un editor invitado al trip (no el owner), trip.user_id != auth.uid()
-      // → RLS rechaza. Obtenemos el caller real de la sesión.
-      const { data: { user: callerUser } } = await client.auth.getUser();
-      if (!callerUser) { alert("Sesión expirada. Volvé a hacer login."); setUploading(false); return; }
       const { error: insertErr } = await client.from("attachments").insert({
         trip_id: trip.id, user_id: callerUser.id,
         entity_type: match ? "reservation" : "trip",

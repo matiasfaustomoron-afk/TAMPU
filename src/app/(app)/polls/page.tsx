@@ -7,7 +7,8 @@ import { EmptyState } from "@/components/shared";
 import { PollCard } from "@/components/polls/poll-card";
 import { CreatePoll } from "@/components/polls/create-poll";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
-import { listPolls, isPollClosed, autoClosePollsIfDue, type Poll } from "@/lib/polls/poll";
+import { useSupabase } from "@/lib/context/supabase-provider";
+import { listPolls, listPollsOnline, isPollClosed, autoClosePollsIfDue, type Poll } from "@/lib/polls/poll";
 import { useI18n } from "@/i18n/provider";
 
 type Filter = "open" | "closed" | "all";
@@ -22,16 +23,60 @@ type Filter = "open" | "closed" | "all";
 export default function PollsPage() {
   const { t } = useI18n();
   const { data: trip } = useActiveTrip();
+  const { client, mode } = useSupabase();
   const [filter, setFilter] = useState<Filter>("open");
   // initial sync read so primer render no es vacío (Lazy initializer evita
-  // el lint "setState in effect").
+  // el lint "setState in effect"). En online mode, esto da una baseline
+  // mientras llega la fetch async — si el local cache está vacío el user
+  // ve loading-empty muy brevemente.
   const [polls, setPolls] = useState<Poll[]>(() =>
     trip ? listPolls(trip.id, { status: "all" }) : []
   );
   const refresh = useCallback(() => {
     if (!trip) return setPolls(prev => (prev.length === 0 ? prev : []));
+    if (mode === "online" && client) {
+      // Online: leer de Supabase. Si falla (tabla no existe), fallback a local.
+      listPollsOnline(client, trip.id).then((online) => {
+        if (online != null) setPolls(online);
+        else setPolls(listPolls(trip.id, { status: "all" }));
+      });
+      return;
+    }
     setPolls(listPolls(trip.id, { status: "all" }));
-  }, [trip]);
+  }, [trip, mode, client]);
+
+  // Initial fetch en online mode (writes siguen siendo local por ahora — TODO:
+  // wire createPollOnline/castVoteOnline en CreatePoll y PollCard cuando se
+  // habilite full online polls).
+  useEffect(() => {
+    if (!trip) return;
+    if (mode === "online" && client) {
+      listPollsOnline(client, trip.id).then((online) => {
+        if (online != null) setPolls(online);
+      });
+    }
+  }, [trip, mode, client]);
+
+  // Realtime: si la tabla polls existe en Supabase, refetch en insert/update.
+  // En demo/unconfigured mode, no hace nada.
+  useEffect(() => {
+    if (mode !== "online" || !client || !trip) return;
+    const channel = client
+      .channel(`polls:trip:${trip.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "polls", filter: `trip_id=eq.${trip.id}` },
+        () => {
+          listPollsOnline(client, trip.id).then((online) => {
+            if (online != null) setPolls(online);
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [mode, client, trip]);
 
   // Refresh cuando cambia el trip o cuando otra tab modifica localStorage.
   // No invocamos refresh inside the effect — lo conectamos como subscription.

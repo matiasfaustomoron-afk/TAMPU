@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeader, EmptyState, Semaphore, KPICard } from "@/components/shared";
+import { Button } from "@/components/ui/button";
 import { useActiveTrip, useCities, useTasks, useDocuments } from "@/lib/hooks/use-trip-data";
 import { buildTripHealthPlan } from "@/lib/domain/vaccinations";
 import { AttachDocButton } from "@/components/ios/attach-doc-button";
@@ -45,7 +46,7 @@ export default function HealthPage() {
     return buildTripHealthPlan(cities, tasks, documents);
   }, [trip, cities, tasks, documents]);
 
-  if (!plan) return <EmptyState title="Sin viaje activo" icon={<Heart className="w-8 h-8" />} />;
+  if (!plan) return <EmptyState title="Sin viaje activo" icon={<Heart className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />;
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
