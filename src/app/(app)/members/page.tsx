@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Users, UserPlus, Check, X, Loader2, Mail, Shield, Eye } from "lucide-react";
 import { LargeTitle, Sheet } from "@/components/ios";
@@ -52,7 +52,7 @@ const ROLE_TONE: Record<Member["role"], string> = {
   viewer: "tampu-icon tampu-icon-piedra",
 };
 
-export default function SharePage() {
+function SharePageContent() {
   const { data: trip } = useActiveTrip();
   const { client, mode } = useSupabase();
   const [members, setMembers] = useState<Member[]>([]);
@@ -397,5 +397,13 @@ export default function SharePage() {
         </div>
       </Sheet>
     </div>
+  );
+}
+
+export default function SharePage() {
+  return (
+    <Suspense fallback={null}>
+      <SharePageContent />
+    </Suspense>
   );
 }
