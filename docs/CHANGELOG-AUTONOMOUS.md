@@ -421,3 +421,59 @@ Commit Iter 5: `4b66b1d`.
 
 ## Iteration 6 — 2026-05-15T17:23:20Z
 
+**Pipeline**: 5 audit agents (~50 findings) → top-18 priorizados → 5 fix agents paralelos disjuntos → **35 fixes aplicados + 1 skip** → tsc 0 ✓ + vitest 236/236 ✓ (+2 PII tests CBU/IBAN) → commit `720cfb5` → push → Vercel deploy → smoke /welcome 200, /login 200, /api/curated-destinations JSON ✓.
+
+### Cambios (35) por dominio
+
+**IA (7)** — `providers.ts` Anthropic temperature default 0.2 (era 1.0 → hallucination JSON-strict en 8 endpoints, fix sin tocar callers); `assistant`+`generate-itinerary` temperature 0.6 explícito (prosa más natural); `generate-itinerary` validación rango fechas + day_number consecutivo (previene itinerarios imaginarios fuera de viaje); `ai-proxy` Retry-After garantizado 429/503 + temperature param body + default 0.2; `pii-filter` 3 regex nuevas CBU AR (label + bare 22-dígitos) + IBAN europeo + 2 tests passing.
+
+**Code (6)** — `use-trip-data.ts` mDelete{Expense,Reservation,Attachment} **scoped invalidation** (overload pragmatic `string | {id,tripId}` — soluciona el skip de Iter 5); 3 callers actualizados (`/expenses`, `/itinerary`, `/vault`); `use-theme.ts` getSnapshot fallback `"light"` (era `"dark"`, hydration mismatch boot script); `supabase/client.ts` `resetClient()` exportado para logout cleanup; `next.config.ts` `images.remotePatterns` `*.supabase.co`; `twilio.ts` any → `Twilio` types (últimos 2 any del codebase); members race fix usando `activateTrip` mutation en vez de `setActiveTrip` raw.
+
+**Diseño+i18n (7)** — `en.ts` portado `members.roles` + `comments.*` blocks (paridad rota → reparada P0); `/vault` top strings i18n (title, CTAs, sheet labels, retentionFaq, locationShort, name/category/notes, classifyAI, analyzing, autoLinkTo); `comment-thread.tsx` i18n full + plural (commentCount, showResolved); `poll-card.tsx` i18n + `activity.voted` con placeholders {option}/{question} + plural voteCount; `members/page.tsx` `ROLE_LABEL` → `t.members.roles.{owner,editor,viewer}` ("Dueño/Editor/Visor" ES); `attach-doc-button.tsx` `t.vault.attach.*`; `PrintBookSheet.tsx` BINDING_LABELS + defaultTitle i18n.
+
+**Innovación (6)** — `/settings` **nueva sección "Compartí mi viaje"** con toggle `recap_public` (DESBLOQUEA features Iter 4-5 que estaban 404 por privacy gate); `data/trips.ts` `updateTripRecapPublic` helper + `recap_public` en `TRIP_LIST_COLUMNS`; `AnnualRecapPromoCard.tsx` NEW (visible Nov/Dic/Ene → `/recap/year/[userId]`, CAC orgánico anual); `ExpiringDocCard.tsx` NEW (top 3 docs próximos a vencer, ventana 0-90d); ambos cards montados en `/today`; `/api/cron/expiry-check` NEW (Bearer CRON_SECRET, scan attachments `expires_at`, insert alerts TODO).
+
+**Funcionalidad (6)** — `/tasks/[id]` ghost route → página REAL (fetch + toggle complete + edit inline + delete, fix P0 de Iter 6 audit); `/login` "Olvidé mi contraseña" inline form + `resetPasswordForEmail` flow (toast uniform anti-enum); `/trips` wizard `toast.warn` cuando faltan campos (era silent return); `/today` RecapShareButton disabled+toast.info si `recap_public=false` (UX defensiva); `/journal` caption debounce 300ms (era persist por keystroke); `/journal` event rename `tampu-vault-change` con legacy bridge.
+
+### Verificación
+
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` **236/236** ✓ (+2 PII tests CBU/IBAN, sin regression)
+- Deploy production READY ✓
+- Smoke /welcome 200 ✓, /login 200 ✓, /api/curated-destinations JSON ✓
+
+### USER ACTIONS post-Iter 6
+
+**P0 CRÍTICO**:
+- Aplicar migrations pendientes (33-38) en Supabase SQL Editor
+- Toggle `recap_public` en `/settings` → "Compartir mi viaje" para activar share del trip activo
+- ENV `CRON_SECRET` en Vercel para activar `/api/cron/expiry-check` (cualquier string secreto + scheduler externo: cron-job.org / Vercel Cron / GitHub Actions schedule)
+
+**P1**: Revocar 4 tokens (Vercel, GitHub PAT, Resend, Supabase DB password)
+
+### Token cost estimado Iter 6
+
+- 5 audit agents: ~550k input tokens
+- 5 fix agents: ~480k input tokens
+- Verify + commit + deploy: ~5k
+- Total: ~1.05M tokens (~USD 7.5 Sonnet)
+
+### Observaciones para Iter 7+
+
+1. **/journal i18n masivo** (~30 strings, defer Iter 6 — toca en Iter 7)
+2. **/journal Supabase sync entries** (tabla `journal_entries` + RLS — P0 carry-over Iter 4-5-6 unfixed)
+3. **/itinerary day ops** (drag&drop, edit, mark complete — P0 carry-over unfixed)
+4. **SSE streaming /api/assistant + /api/generate-itinerary** — carry-over
+5. **Assistant multi-turn chat** (messages[] state) — carry-over
+6. **MercadoPago checkout wire** (print-book endpoint listo, falta integration)
+7. **Capacitor `confirm/alert` → ConfirmSheet hook** (~12 call sites — refactor sistémico)
+8. **Forward email per-user alias** UI completa (parcial en /inbox)
+9. **Apple Wallet auto-add** desde email parsing
+10. **WhatsApp outbound pre-flight cron** — requiere Twilio prod ENVs
+11. **Comments threaded extender** a reservations/expenses/polls/cities
+12. **Polls deadline** column + countdown
+13. **`recap_public` opt-in UX** podría ser default-on para usuarios que vieron Recap (signal de intent)
+14. **Server Actions opportunities**: addTrip, setActiveTrip, mutaciones varias
+
+Commit Iter 6: `720cfb5`.
+
