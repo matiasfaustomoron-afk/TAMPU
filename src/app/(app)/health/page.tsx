@@ -8,6 +8,7 @@ import { buildTripHealthPlan } from "@/lib/domain/vaccinations";
 import { AttachDocButton } from "@/components/ios/attach-doc-button";
 import { Heart, Syringe, Bug, ExternalLink, Clock } from "lucide-react";
 import Link from "next/link";
+import { useI18n } from "@/i18n/provider";
 
 const LEVEL_COLOR: Record<string, "red" | "orange" | "yellow" | "gray"> = {
   required: "red",
@@ -16,23 +17,10 @@ const LEVEL_COLOR: Record<string, "red" | "orange" | "yellow" | "gray"> = {
   consider: "gray",
 };
 
-const LEVEL_LABEL: Record<string, string> = {
-  required: "Obligatoria",
-  strongly_recommended: "Muy recomendada",
-  recommended: "Recomendada",
-  consider: "Considerar",
-};
-
 const STATUS_COLOR: Record<string, "green" | "yellow" | "red"> = {
   ready: "green",
   in_progress: "yellow",
   pending: "red",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  ready: "OK",
-  in_progress: "En curso",
-  pending: "Pendiente",
 };
 
 export default function HealthPage() {
@@ -40,44 +28,59 @@ export default function HealthPage() {
   const { data: cities } = useCities(trip?.id);
   const { data: tasks } = useTasks(trip?.id);
   const { data: documents } = useDocuments(trip?.id);
+  const { t } = useI18n();
+  const th = t.health;
+
+  const LEVEL_LABEL: Record<string, string> = {
+    required: th.levels.required,
+    strongly_recommended: th.levels.high_risk,
+    recommended: th.levels.recommended,
+    consider: th.levels.routine,
+  };
+
+  const STATUS_LABEL: Record<string, string> = {
+    ready: th.statuses.completed,
+    in_progress: th.statuses.in_progress,
+    pending: th.statuses.not_started,
+  };
 
   const plan = useMemo(() => {
     if (!trip || !cities || !tasks || !documents) return null;
     return buildTripHealthPlan(cities, tasks, documents);
   }, [trip, cities, tasks, documents]);
 
-  if (!plan) return <EmptyState title="Sin viaje activo" icon={<Heart className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />;
+  if (!plan) return <EmptyState title={t.common.noActiveTrip} icon={<Heart className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">{t.trips.createFirst}</Button></Link>} />;
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader
-        title="Salud y vacunas"
-        subtitle={`${plan.vaccines_needed.length} vacunas relevantes · ${plan.open_count} pendientes · lead máximo ${plan.total_lead_weeks} semanas`}
+        title={th.title}
+        subtitle={th.subtitle}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KPICard
-          label="Vacunas pendientes"
+          label={th.kpi.pendingVaccines}
           value={`${plan.open_count}`}
           status={plan.open_count === 0 ? "green" : plan.open_count > 3 ? "red" : "orange"}
           icon={<Syringe className="w-4 h-4" />}
         />
         <KPICard
-          label="Lead time recomendado"
+          label={th.kpi.leadTime}
           value={`${plan.total_lead_weeks}s`}
           subtitle="antes del viaje"
           status="gray"
           icon={<Clock className="w-4 h-4" />}
         />
         <KPICard
-          label="Profilaxis malaria"
-          value={plan.malaria_required ? "Sí" : "No"}
+          label={th.kpi.malariaCountries}
+          value={plan.malaria_required ? t.common.yes : t.common.no}
           subtitle={plan.malaria_required ? plan.malaria_countries.join(", ") : "Ningún país con malaria"}
           status={plan.malaria_required ? "orange" : "green"}
           icon={<Bug className="w-4 h-4" />}
         />
         <KPICard
-          label="Países"
+          label={th.kpi.countries}
           value={`${plan.countries.length}`}
           status="gray"
           icon={<Heart className="w-4 h-4" />}
@@ -85,7 +88,7 @@ export default function HealthPage() {
       </div>
 
       {plan.countries.length === 0 ? (
-        <EmptyState title="No tengo perfiles de salud para los destinos cargados" description="Cargá ciudades en el itinerario." icon={<Heart className="w-8 h-8" />} action={<Link href="/itinerary"><Button>Cargar ciudades</Button></Link>} />
+        <EmptyState title={th.emptyTitle} description={th.emptyDescription} icon={<Heart className="w-8 h-8" />} action={<Link href="/itinerary"><Button>Cargar ciudades</Button></Link>} />
       ) : (
         <>
           {/* Aggregated vaccine list */}
@@ -133,18 +136,15 @@ export default function HealthPage() {
           {plan.malaria_required && (
             <Card className="border-l-4 border-l-primary">
               <CardContent className="p-4 space-y-2">
-                <h2 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Bug className="w-4 h-4 text-primary" />Malaria</h2>
+                <h2 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Bug className="w-4 h-4 text-primary" />{th.malariaInfo.title}</h2>
                 <p className="text-xs">
-                  Presente en: <strong>{plan.malaria_countries.join(", ")}</strong>.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Profilaxis recomendada. Discutir con médico antes de viajar. Las opciones comunes y sus lead times:
+                  {th.malariaInfo.intro} <strong>{plan.malaria_countries.join(", ")}</strong>
                 </p>
                 <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
-                  <li><strong>Atovaquone-proguanil</strong>: empezar 1-2 días antes, continuar 7 días después</li>
-                  <li><strong>Doxiciclina</strong>: empezar 1-2 días antes, continuar 28 días después</li>
-                  <li><strong>Mefloquina</strong>: empezar 2-3 semanas antes (chequear tolerancia)</li>
-                  <li><strong>Tafenoquina</strong>: dosis única 3 días antes (requiere test G6PD)</li>
+                  <li>{th.malariaInfo.bullet1}</li>
+                  <li>{th.malariaInfo.bullet2}</li>
+                  <li>{th.malariaInfo.bullet3}</li>
+                  <li>{th.malariaInfo.bullet4}</li>
                 </ul>
               </CardContent>
             </Card>
@@ -185,9 +185,7 @@ export default function HealthPage() {
 
           <Card className="bg-muted/20">
             <CardContent className="p-3 text-[10px] text-muted-foreground">
-              ⚠ Esta es una guía generada automáticamente desde los destinos del viaje. NO reemplaza la consulta médica.
-              Tu historia clínica, edad, embarazo, alergias y otras condiciones pueden cambiar las recomendaciones.
-              Para PNG en particular, los CDC marcan polio circulante; pedí refuerzo aunque tengas el esquema completo.
+              {th.disclaimer}
               <Link href="/alerts" className="text-primary hover:underline ml-1">Ver alertas activas →</Link>
             </CardContent>
           </Card>

@@ -21,7 +21,11 @@ function migrateLegacyKey(): void {
 }
 
 function getServerSnapshot(): Theme {
-  return "dark";
+  // Default light: el boot script en layout.tsx no agrega `dark` class por
+  // defecto, así que el server-rendered HTML es light. Devolver "dark" acá
+  // causaba un mismatch transitorio en hydration cuando localStorage no
+  // tenía el key.
+  return "light";
 }
 
 function getSnapshot(): Theme {

@@ -15,6 +15,7 @@
 
 import { captureException } from "@/lib/observability/sentry";
 import { estimateCostUsd, recordProxyCall } from "@/lib/ai/rate-limit";
+import { withRetry } from "@/lib/ai/providers";
 
 export type WhatsAppItemType =
   | "flight"
@@ -148,8 +149,12 @@ interface GeminiResponse {
 /**
  * Llamada directa a Anthropic Claude Haiku 4.5. Devuelve raw text + token
  * usage. Null en caso de error de transporte (NO captura el shape inválido).
+ *
+ * Errores 401 (auth) throwean con `status: 401` para que `withRetry` corte
+ * sin reintentar. Errores 429 / 5xx throwean con su status para que
+ * `withRetry` haga backoff exponencial. El wrapper público vive más abajo.
  */
-async function callAnthropicHaiku(
+async function callAnthropicHaikuOnce(
   key: string,
   userMessage: string,
 ): Promise<{ text: string; tokensIn: number; tokensOut: number } | null> {
@@ -174,7 +179,22 @@ async function callAnthropicHaiku(
         messages: [{ role: "user", content: userMessage }],
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // 401 → error de auth, NO retryable. `withRetry` corta inmediato.
+      if (res.status === 401) {
+        const err = new Error(`anthropic_unauthorized`) as Error & { status?: number };
+        err.status = 401;
+        throw err;
+      }
+      // 429 / 5xx → transient, throw con status para que `withRetry` haga
+      // backoff exponencial (1s, 2s, 4s).
+      if (res.status === 429 || res.status >= 500) {
+        const err = new Error(`anthropic_${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
+      return null;
+    }
     const json: AnthropicResponse = await res.json();
     const text = json.content?.find(c => c.type === "text")?.text ?? "";
     if (!text) return null;
@@ -183,12 +203,16 @@ async function callAnthropicHaiku(
       tokensIn: json.usage?.input_tokens ?? 0,
       tokensOut: json.usage?.output_tokens ?? 0,
     };
-  } catch {
+  } catch (e: unknown) {
+    const status = (e as { status?: number })?.status;
+    // Re-throw 401 + transient para que `withRetry` los maneje.
+    if (status === 401) throw e;
+    if (status && (status === 429 || status >= 500)) throw e;
     return null;
   }
 }
 
-async function callGeminiFlash(
+async function callGeminiFlashOnce(
   key: string,
   userMessage: string,
 ): Promise<{ text: string; tokensIn: number; tokensOut: number } | null> {
@@ -203,7 +227,20 @@ async function callGeminiFlash(
         generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Gemini devuelve 403 para keys inválidas (no 401) — tratá ambos como auth.
+      if (res.status === 401 || res.status === 403) {
+        const err = new Error(`gemini_unauthorized`) as Error & { status?: number };
+        err.status = 401;
+        throw err;
+      }
+      if (res.status === 429 || res.status >= 500) {
+        const err = new Error(`gemini_${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
+      return null;
+    }
     const json: GeminiResponse = await res.json();
     const text = json.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") ?? "";
     if (!text) return null;
@@ -212,6 +249,34 @@ async function callGeminiFlash(
       tokensIn: json.usageMetadata?.promptTokenCount ?? 0,
       tokensOut: json.usageMetadata?.candidatesTokenCount ?? 0,
     };
+  } catch (e: unknown) {
+    const status = (e as { status?: number })?.status;
+    if (status === 401) throw e;
+    if (status && (status === 429 || status >= 500)) throw e;
+    return null;
+  }
+}
+
+// Wrappers públicos: `withRetry` envuelve `*Once` y reintenta con backoff
+// exponencial (1s, 2s, 4s) en 429/5xx. 401 corta sin reintentar.
+async function callAnthropicHaiku(
+  key: string,
+  userMessage: string,
+): Promise<{ text: string; tokensIn: number; tokensOut: number } | null> {
+  try {
+    return await withRetry(() => callAnthropicHaikuOnce(key, userMessage));
+  } catch {
+    // withRetry rethrowea 401 / max-retries — para el caller estos son "no data".
+    return null;
+  }
+}
+
+async function callGeminiFlash(
+  key: string,
+  userMessage: string,
+): Promise<{ text: string; tokensIn: number; tokensOut: number } | null> {
+  try {
+    return await withRetry(() => callGeminiFlashOnce(key, userMessage));
   } catch {
     return null;
   }
@@ -240,6 +305,34 @@ function safeParseJson(raw: string): unknown {
 }
 
 /**
+ * Valida que el `data` cumpla el shape mínimo según `type`. Si el modelo
+ * declara `confidence: high` pero el shape no tiene los campos clave
+ * (ej. flight sin airline/flight_number/departure_at) → degradamos a "low".
+ *
+ * Lección de campo: el modelo a veces inventa `confidence: high` con
+ * data: {} o data con keys irrelevantes. Sin esta validación, el consumer
+ * (webhook) auto-insertaba un item vacío al trip del user.
+ */
+function validateDataShape(type: string, data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  switch (type) {
+    case "flight":
+      return !!(d.airline || d.flight_number || d.departure_at);
+    case "hotel":
+    case "accommodation":
+      return !!(d.provider || d.check_in || d.check_out);
+    case "transport":
+      return !!(d.provider || d.departure_at);
+    case "reservation":
+      return !!(d.provider || d.use_date || d.description);
+    case "note": return true;
+    case "unknown": return true;
+    default: return false;
+  }
+}
+
+/**
  * Valida que el output cumpla el shape mínimo. Si no, devolvemos un
  * `unknown` low-confidence — preferimos ser conservadores y NO inventar
  * que entendimos algo si el modelo nos devolvió basura.
@@ -255,11 +348,17 @@ function normalizeParsed(raw: unknown): ParsedWhatsAppItem {
   const type = VALID_TYPES.includes(obj.type as WhatsAppItemType)
     ? (obj.type as WhatsAppItemType)
     : "unknown";
-  const confidence = VALID_CONFIDENCE.includes(obj.confidence as Confidence)
+  let confidence = VALID_CONFIDENCE.includes(obj.confidence as Confidence)
     ? (obj.confidence as Confidence)
     : "low";
   const data = (obj.data && typeof obj.data === "object") ? (obj.data as Record<string, unknown>) : {};
-  const reasoning = typeof obj.reasoning === "string" ? obj.reasoning : undefined;
+  let reasoning = typeof obj.reasoning === "string" ? obj.reasoning : undefined;
+  // Shape-validation gate: si el modelo declara `high` pero el data está
+  // incompleto, degradamos a `low` y sobrescribimos el reasoning.
+  if (confidence === "high" && !validateDataShape(type, data)) {
+    confidence = "low";
+    reasoning = "Schema validation failed: data missing required fields for type";
+  }
   return { type, confidence, data, reasoning };
 }
 

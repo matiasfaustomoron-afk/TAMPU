@@ -42,6 +42,20 @@ function ActivityQueryReader({ onTrigger }: { onTrigger: () => void }) {
   return null;
 }
 
+/**
+ * Mismo patrón que ActivityQueryReader, pero para `?wizard=1`. Deep-link desde
+ * /today (banner empty-state "Crear mi primer viaje") y /more (atajo). Abre el
+ * wizard de nuevo viaje al montar si el param está presente.
+ */
+function WizardQueryReader({ onTrigger }: { onTrigger: () => void }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get("wizard") === "1") onTrigger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  return null;
+}
+
 export default function TripsPage() {
   const { t, formatDate } = useI18n();
   const router = useRouter();
@@ -143,6 +157,7 @@ export default function TripsPage() {
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
       <Suspense fallback={null}>
         <ActivityQueryReader onTrigger={() => setActivityOpen(true)} />
+        <WizardQueryReader onTrigger={openWizard} />
       </Suspense>
       <SectionHeader
         title={t.trips.title}

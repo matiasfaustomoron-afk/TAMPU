@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ios/toast";
 import { reportError } from "@/lib/utils/errors";
 import type { Reservation } from "@/lib/types/database";
+import { useI18n } from "@/i18n/provider";
 
 interface Props {
   reservation: Reservation;
@@ -56,6 +57,8 @@ function buildPassRequestFromReservation(r: Reservation) {
 
 export function AddToWalletButton({ reservation, className, size = "sm" }: Props) {
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
+  const tw = t.wallet;
 
   async function handleClick() {
     setLoading(true);
@@ -70,16 +73,13 @@ export function AddToWalletButton({ reservation, className, size = "sm" }: Props
       if (!res.ok) {
         // 503 = cert Apple Developer no configurado. Graceful degrade.
         if (res.status === 503) {
-          toast(
-            "Apple Wallet requiere certificado Apple Developer. Próximamente.",
-            "info",
-          );
+          toast(tw.certMissing, "info");
           return;
         }
         const err = (await res.json().catch(() => ({ error: "unknown" }))) as {
           error?: string;
         };
-        toast(`No se pudo generar el pase: ${err.error || res.status}`, "error");
+        toast(`${tw.errorPrefix}: ${err.error || res.status}`, "error");
         return;
       }
 
@@ -93,12 +93,9 @@ export function AddToWalletButton({ reservation, className, size = "sm" }: Props
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast(
-        "Pase descargado — abrilo desde tus archivos para agregarlo a Wallet",
-        "success",
-      );
+      toast(tw.downloadedToast, "success");
     } catch (e) {
-      reportError(e, "No se pudo descargar el pase");
+      reportError(e, tw.errorPrefix);
     } finally {
       setLoading(false);
     }
@@ -111,10 +108,10 @@ export function AddToWalletButton({ reservation, className, size = "sm" }: Props
       onClick={handleClick}
       disabled={loading}
       className={className}
-      aria-label="Agregar reserva a Apple Wallet"
+      aria-label={tw.ariaLabel}
     >
       <Wallet className="w-4 h-4 mr-2" aria-hidden />
-      {loading ? "Generando..." : "Agregar a Wallet"}
+      {loading ? tw.loading : tw.button}
     </Button>
   );
 }

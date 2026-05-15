@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { BUDGET_CATEGORIES } from "@/lib/config/constants";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 
 // ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
@@ -84,10 +85,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "llm_failed" }, { status: 502 });
   }
 
-  // Log usage REAL del provider + modelo concreto.
+  // Log usage REAL del provider + modelo concreto. Identifier per-user
+  // (`byok:user:<uuid>:categorize-expense`) para rate-limit individual.
   const tokensIn = rich.usage.inputTokens;
   const tokensOut = rich.usage.outputTokens;
-  void recordProxyCall(source === "byok" ? "byok:categorize" : "fallback:categorize", {
+  const identifier = await getProxyIdentifier(
+    "categorize-expense",
+    source === "byok" ? "byok" : "fallback",
+  );
+  void recordProxyCall(identifier, {
     endpoint: "/api/categorize-expense",
     tokensIn,
     tokensOut,

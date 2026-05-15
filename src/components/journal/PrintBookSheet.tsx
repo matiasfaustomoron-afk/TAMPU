@@ -58,6 +58,12 @@ export function PrintBookSheet({ open, onClose, tripId, tripName }: Props) {
         estimate?: { pages: number; price_eur: number; binding: string };
       };
       if (!res.ok) {
+        if (res.status === 401) {
+          // Sesión perdida / cookie expirada. No spamear reportError con un
+          // 401 — el user simplemente necesita re-loguearse antes de pedir.
+          toast("Necesitás iniciar sesión para pedir un libro", "info");
+          return;
+        }
         if (res.status === 503) {
           toast("Configuración pendiente. Probá más tarde.", "warn");
         } else {

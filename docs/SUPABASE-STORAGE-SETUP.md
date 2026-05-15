@@ -25,34 +25,56 @@ Cada archivo se sube con el path:
 Esto permite que las políticas RLS chequeen `auth.uid()::text` contra el
 primer segmento del path (`storage.foldername(name)[1]`).
 
-## 3. Aplicar las políticas RLS
+## 3. Aplicar las políticas RLS (multi-user, Iter 3)
+
+> **Nota Iter 3 (2026-05-15)**: las políticas originales `vault_*_own` basadas
+> solo en `storage.foldername(name)[1] = auth.uid()::text` rompían el flow
+> multi-user. La migration `00034_attachments_rls_multi_user.sql` permite que
+> editores invitados creen filas en `public.attachments`, pero el bucket
+> Storage usa policies **propias** sobre `storage.objects` que seguían
+> single-user — resultado: `createSignedUrl` devolvía 403/404 al co-owner.
+>
+> El SQL de abajo refleja la migration `00035_storage_policies_multi_user.sql`.
+> Si ya aplicaste las viejas, los `drop policy if exists` se encargan.
 
 Ir a **SQL Editor** → **New query** y pegar:
 
 ```sql
--- ─── Permitir INSERT (subir archivo) solo al dueño del folder ─────────
-create policy "vault_insert_own" on storage.objects
+-- Drop viejas policies single-user (si existen)
+drop policy if exists "vault_select_own" on storage.objects;
+drop policy if exists "vault_insert_own" on storage.objects;
+drop policy if exists "vault_update_own" on storage.objects;
+drop policy if exists "vault_delete_own" on storage.objects;
+
+-- ─── SELECT: cualquier miembro activo del trip que dueña ese attachment ───
+create policy "vault_select_member" on storage.objects
+  for select using (
+    bucket_id = 'travel-vault'
+    and exists (
+      select 1 from public.attachments a
+      join public.trip_members tm on tm.trip_id = a.trip_id
+      where a.storage_path = storage.objects.name
+        and tm.user_id = auth.uid()
+        and tm.status = 'active'
+    )
+  );
+
+-- ─── INSERT: owner/editor del trip suben bajo su propio folder ────────────
+create policy "vault_insert_member" on storage.objects
   for insert with check (
     bucket_id = 'travel-vault'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- ─── Permitir SELECT (download/list) solo al dueño del folder ─────────
-create policy "vault_select_own" on storage.objects
-  for select using (
-    bucket_id = 'travel-vault'
-    and (storage.foldername(name))[1] = auth.uid()::text
-  );
-
--- ─── Permitir UPDATE (replace) solo al dueño del folder ───────────────
-create policy "vault_update_own" on storage.objects
+-- ─── UPDATE: solo el uploader original ────────────────────────────────────
+create policy "vault_update_own_uploader" on storage.objects
   for update using (
     bucket_id = 'travel-vault'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- ─── Permitir DELETE solo al dueño del folder ─────────────────────────
-create policy "vault_delete_own" on storage.objects
+-- ─── DELETE: solo el uploader original ────────────────────────────────────
+create policy "vault_delete_own_uploader" on storage.objects
   for delete using (
     bucket_id = 'travel-vault'
     and (storage.foldername(name))[1] = auth.uid()::text

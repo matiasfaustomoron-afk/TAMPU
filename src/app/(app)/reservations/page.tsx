@@ -1,13 +1,12 @@
 "use client";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { Sheet } from "@/components/ios";
 import { toast } from "@/components/ios/toast";
 import { StatusBadge, EmptyState, SectionHeader } from "@/components/shared";
-import { useActiveTrip, useReservations, useMutations } from "@/lib/hooks/use-trip-data";
-import { useSupabase } from "@/lib/context/supabase-provider";
+import { useActiveTrip, useReservations, useMutations, useAttachments } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
 import { RESERVATION_TYPES, RESERVATION_STATUSES, CURRENCIES } from "@/lib/config/constants";
 import { attachmentsForReservation } from "@/lib/domain/attachment-linker";
@@ -16,7 +15,7 @@ import { CommentButton } from "@/components/comments/comment-button";
 import { TripPollsSection } from "@/components/polls/trip-polls-section";
 import { AddToWalletButton } from "@/components/passes/AddToWalletButton";
 import { Bookmark, Plane, Home, Train, Bus, MapPin, Shield, Wifi, MoreHorizontal, AlertTriangle, Edit, Check, X, Paperclip, Plus } from "lucide-react";
-import type { Reservation, ReservationStatus, ReservationType, Attachment } from "@/lib/types/database";
+import type { Reservation, ReservationStatus, ReservationType } from "@/lib/types/database";
 
 const TI: Record<string, React.ReactNode> = {
   flight: <Plane className="w-4 h-4" />,
@@ -31,15 +30,21 @@ const TI: Record<string, React.ReactNode> = {
 
 export default function ReservationsPage() {
   const { t, formatCurrency, formatDate } = useI18n();
-  const { client, mode } = useSupabase();
   const { data: trip } = useActiveTrip();
   const { data: reservations, loading, refetch } = useReservations(trip?.id);
   const { updateReservation, addReservation } = useMutations();
+  // Iter 3: attachments via TanStack hook (antes había useState + useEffect
+  // con `client.from("attachments")` directo). El hook unifica online + demo
+  // y se invalida automáticamente via `mAddAttachment.onSuccess` cuando
+  // AttachDocButton sube algo nuevo. `data` puede ser null mientras carga,
+  // por eso colapsamos con `?? []` (no `= []` default destructuring porque
+  // ese patrón solo cubre `undefined`, no `null`).
+  const { data: attachmentsData } = useAttachments(trip?.id);
+  const attachments = attachmentsData ?? [];
   const [ft, setFt] = useState("all");
   const [exp, setExp] = useState<string | null>(null);
   const [edit, setEdit] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Reservation>>({});
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Sheet de "+ Nueva reserva": 6 campos mínimos. El resto (criticality,
   // exchange_rate, etc.) se derivan o quedan en defaults — el user puede
   // editar luego desde la fila expandida.
@@ -105,29 +110,6 @@ export default function ReservationsPage() {
       setAdding(false);
     }
   }, [trip, newRes, addReservation, refetch]);
-
-  // Load attachments to display under each reservation
-  // TODO Iter 3: migrar a `useAttachments(trip?.id)` — el hook ya existe en
-  // use-trip-data.ts y vault/boarding-passes ya lo usan. Dejamos este fetch
-  // directo por ahora porque la lógica de la página depende de un useState
-  // local que también recibe data de AttachDocButton (que upload independiente);
-  // unificar requiere refactor del callback path. Footprint riesgo > beneficio
-  // este iter, queda como follow-up explícito.
-  useEffect(() => {
-    if (!trip) return;
-    let cancelled = false;
-    if (mode === "online" && client) {
-      client.from("attachments").select("*").eq("trip_id", trip.id)
-        .then(({ data }) => { if (!cancelled) setAttachments(data ?? []); });
-    } else {
-      try {
-        const raw = localStorage.getItem(`travel-os-vault-${trip.id}`);
-        const parsed = raw ? JSON.parse(raw) as Attachment[] : [];
-        queueMicrotask(() => { if (!cancelled) setAttachments(parsed); });
-      } catch { /* empty */ }
-    }
-    return () => { cancelled = true; };
-  }, [trip, mode, client]);
 
   const list = useMemo(() => reservations ?? [], [reservations]);
   const filtered = useMemo(() => {

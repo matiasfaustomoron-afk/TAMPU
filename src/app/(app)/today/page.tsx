@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bed, Bus, AlertTriangle, Compass, Plus, Inbox } from "lucide-react";
-import { useCommandCenter, useAllTrips } from "@/lib/hooks/use-trip-data";
+import {
+  useCommandCenter,
+  useAllTrips,
+  useReservations,
+  useDocuments,
+} from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
 import { IOSFeatureCard, ProgressRing } from "@/components/ios";
 import { SyncIndicator } from "@/components/ios/sync-indicator";
 import { HeroParallax } from "@/components/ios/hero-parallax";
 import { DestinationPhoto } from "@/components/brand/destination-photo";
 import { GlyphCartera, GlyphDinero, GlyphEmergencia } from "@/components/brand/glyphs";
+import { QuickStatsCard } from "@/components/dashboard/QuickStatsCard";
 import { scheduleDailyBrief } from "@/lib/daily-brief";
 import { pushWidgetFromCommandCenter } from "@/lib/native/widget-bridge";
 import { useCountUp } from "@/lib/hooks/use-count-up";
@@ -67,6 +73,38 @@ export default function TodayPage() {
   const daysUntilStart = useCountUp(cc?.mode_info.days_until_start ?? 0, {
     durationMs: 1100, enabled: !!cc,
   });
+
+  // Entity reads para QuickStatsCard. cc.dashboard NO expone las listas completas
+  // de reservations/documents — solo summaries — así que pegamos a los entity hooks
+  // (mismo cache que cc, sin red extra). Llamados SIEMPRE para preservar hook order.
+  const tripId = cc?.trip.id;
+  const { data: reservations } = useReservations(tripId);
+  const { data: documents } = useDocuments(tripId);
+
+  const stats = useMemo(() => {
+    if (!cc) return null;
+    const now = new Date();
+    const flightsRemaining = (reservations || []).filter(
+      (r) => r.type === "flight" && r.use_date && new Date(r.use_date) > now,
+    ).length;
+    // El shape real de Document.status no tiene "expiring_soon"; lo derivamos
+    // a partir de expiry_date dentro de 30 días.
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const documentsNeedingAction = (documents || []).filter((d) => {
+      if (d.status === "pending") return true;
+      if (d.status === "ready" && d.expiry_date) {
+        const exp = new Date(d.expiry_date).getTime();
+        return exp - now.getTime() < thirtyDaysMs && exp >= now.getTime();
+      }
+      return false;
+    }).length;
+    return {
+      daysUntilStart: cc.mode_info.days_until_start ?? null,
+      flightsRemaining,
+      documentsNeedingAction,
+      budgetUsedPct: cc.dashboard.budget.percent_used ?? 0,
+    };
+  }, [cc, reservations, documents]);
 
   // Sin viajes → onboarding
   useEffect(() => {
@@ -246,6 +284,13 @@ export default function TodayPage() {
           </IOSFeatureCard>
         </section>
       </HeroParallax>
+
+      {/* ─── 1.5. QUICK STATS — 4 stats arriba del fold ─── */}
+      {stats && (
+        <section className="px-4 mt-3" aria-label="Estadísticas rápidas del viaje">
+          <QuickStatsCard stats={stats} />
+        </section>
+      )}
 
       {/* ─── 2. NEXT BEST ACTION ─── */}
       {nba && (

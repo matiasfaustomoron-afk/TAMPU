@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 
 // ─── Booking parser ───
@@ -177,9 +178,14 @@ export async function POST(req: NextRequest) {
       parsed = r.parsed;
       respProvider = r.provider;
       respModel = r.model;
-      // Record real usage + model
+      // Record real usage + model. Identifier per-user para rate-limit
+      // individual (no compartido entre todos los users que invocan el endpoint).
       const costUsd = estimateCostUsd(r.inputTokens, r.outputTokens, r.model);
-      void recordProxyCall(source === "byok" ? "byok:parse-booking" : "fallback:parse-booking", {
+      const identifier = await getProxyIdentifier(
+        "parse-booking",
+        source === "byok" ? "byok" : "fallback",
+      );
+      void recordProxyCall(identifier, {
         endpoint: "/api/parse-booking",
         tokensIn: r.inputTokens,
         tokensOut: r.outputTokens,
@@ -193,7 +199,11 @@ export async function POST(req: NextRequest) {
       respProvider = r.provider;
       respModel = r.model;
       const costUsd = estimateCostUsd(r.inputTokens, r.outputTokens, r.model);
-      void recordProxyCall(source === "byok" ? "byok:parse-booking" : "fallback:parse-booking", {
+      const identifier = await getProxyIdentifier(
+        "parse-booking",
+        source === "byok" ? "byok" : "fallback",
+      );
+      void recordProxyCall(identifier, {
         endpoint: "/api/parse-booking",
         tokensIn: r.inputTokens,
         tokensOut: r.outputTokens,

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { heuristicMultiParse, type ParsedBooking } from "@/lib/parsing/email-parser";
 import { createSupabaseService } from "@/lib/supabase/service";
 import { extractTripShortIdFromAddress, buildTripIdLikePattern } from "@/lib/email-in/address";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
+import { captureException } from "@/lib/observability/sentry";
 
 /**
  * Per-trip email-in webhook — `tampu+<SHORTID>@in.tampu.app`.
@@ -258,8 +261,10 @@ async function handleSimpleJSON(
     return withCors(NextResponse.json({ ok: false, error: "Email body too short or empty" }, { status: 422 }), origin);
   }
 
-  // LLM key check — si no hay key configurada → 503 (spec)
-  const { provider, key } = selectProvider(req);
+  // LLM key check — si no hay key configurada → 503 (spec).
+  // SECURITY: `allowTampuFallback: false` — emails crudos pueden ser de varios
+  // kB y no deben cargar al budget global de Tampu sin pasar por /api/ai-proxy.
+  const { provider, key, source: keySource } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) {
     return withCors(NextResponse.json({
       ok: false,
@@ -268,14 +273,35 @@ async function handleSimpleJSON(
     }, { status: 503 }), origin);
   }
 
+  // `callLLMRich` para tener usage real (input/output tokens + model) y
+  // poder loggear vía `recordProxyCall` con números del provider, no
+  // worst-case `maxTokens`.
   let llm: LLMParseResponse | null = null;
-  const raw = await callLLM(provider, key, {
+  const rich = await callLLMRich(provider, key, {
     system: EMAIL_PARSE_SYSTEM,
     userMessage: `EMAIL:\nFrom: ${body.from}\nSubject: ${body.subject || ""}\n\n${text}`,
     maxTokens: 2048,
     timeoutMs: 30_000,
+    model: "haiku",
   });
-  if (raw) llm = safeParseLLM(raw);
+  if (rich) {
+    llm = safeParseLLM(rich.text);
+    // Record usage real para budget / circuit breaker. Identifier per-user
+    // (`byok:user:<uuid>:email-in` o `fallback:user:<uuid>:email-in`).
+    const identifier = await getProxyIdentifier(
+      "email-in",
+      keySource === "byok" ? "byok" : "fallback",
+    );
+    const costUsd = estimateCostUsd(rich.usage.inputTokens, rich.usage.outputTokens, rich.model);
+    void recordProxyCall(identifier, {
+      endpoint: "/api/email-in",
+      tokensIn: rich.usage.inputTokens,
+      tokensOut: rich.usage.outputTokens,
+      costUsd,
+      provider: rich.provider,
+      model: rich.model,
+    }).catch((e) => captureException(e, { tag: "email-in.record" }));
+  }
 
   // Si LLM falló, intentamos heurística como red de seguridad (no 422 — el operador
   // del webhook ya nos confió el email, queremos al menos guardar el "failed" para

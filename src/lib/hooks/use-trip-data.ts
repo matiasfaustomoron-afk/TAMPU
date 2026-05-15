@@ -421,6 +421,7 @@ function invalidateTrip(qc: QueryClient, mode: string, tripId: string | undefine
   qc.invalidateQueries({ queryKey: ["packingItems", mode, tripId] });
   qc.invalidateQueries({ queryKey: ["tripDays", mode, tripId] });
   qc.invalidateQueries({ queryKey: ["cities", mode, tripId] });
+  qc.invalidateQueries({ queryKey: ["attachments", mode, tripId] });
 }
 
 function invalidateAllTrips(qc: QueryClient, mode: string) {
@@ -552,6 +553,11 @@ export function useMutations() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["attachments", mode, vars.trip_id] });
+      // TODO: si en el futuro las reservations renderizan derivadamente
+      // attachments (e.g. boarding-passes inline en la lista), invalidar
+      // también ["reservations", mode, vars.trip_id] acá. Hoy los call
+      // sites (vault, boarding-passes) consumen `useAttachments` directo,
+      // así que no hay derivación cruzada que invalidar.
     },
   });
 
@@ -590,12 +596,14 @@ export function useMutations() {
     },
     onSuccess: () => {
       invalidateAllTrips(qc, mode);
-      // Activar un trip impacta también los datasets derivados que dependen
-      // del trip activo. Sin invalidar acá, dashboard/commandCenter quedan
-      // pegados al trip anterior hasta el próximo focus event.
-      qc.invalidateQueries({ queryKey: ["activeTrip"] });
-      qc.invalidateQueries({ queryKey: ["commandCenter"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // Activar un trip impacta el dataset del trip activo. invalidateAllTrips
+      // ya invalida ["trips", mode] y ["activeTrip", mode]; este invalidate
+      // explícito scope-by-mode evita leak entre demo/online si en algún
+      // momento se separan los stores. Las antiguas keys ["commandCenter"] /
+      // ["dashboard"] eran dead — esos datasets son derivados (useMemo sobre
+      // useTripFullDataset), no queries cacheadas, así que invalidarlas era
+      // no-op silencioso.
+      qc.invalidateQueries({ queryKey: ["activeTrip", mode] });
     },
   });
 

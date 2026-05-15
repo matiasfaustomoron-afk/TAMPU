@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 
 // ─── Document classifier + OCR ───
@@ -177,10 +178,13 @@ export async function POST(req: NextRequest) {
   const envelope = await llmClassify(req, body);
   if (envelope) {
     // Record real usage para budget / circuit breaker, ya sea hit o degraded.
-    const identifier =
-      envelope.source === "byok" ? "byok:classify"
-      : envelope.source === "tampu" ? "tampu:classify"
-      : "fallback:classify";
+    // Identifier per-user (`byok:user:<uuid>:classify-document` o
+    // `fallback:user:<uuid>:classify-document`) para rate-limit individual.
+    // Caso tampu cae bajo `fallback` ya que comparte el budget de Tampu.
+    const identifier = await getProxyIdentifier(
+      "classify-document",
+      envelope.source === "byok" ? "byok" : "fallback",
+    );
     const costUsd = estimateCostUsd(envelope.inputTokens, envelope.outputTokens, envelope.model);
     void recordProxyCall(identifier, {
       endpoint: "/api/classify-document",

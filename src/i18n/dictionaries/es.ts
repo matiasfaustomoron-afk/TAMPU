@@ -689,6 +689,96 @@ const es = {
     },
   },
 
+  // ─── PASSCODE ───
+  passcode: {
+    setup: {
+      title: "Activar cifrado at-rest",
+      description: "Tu vault de documentos quedará cifrado con un passcode. Si lo olvidás, perdés acceso permanente.",
+      inputLabel: "Passcode (4+ palabras o 12+ caracteres)",
+      confirmLabel: "Repetí passcode",
+      activateButton: "Activar cifrado",
+      activating: "Activando...",
+      confirmDialog: "Si olvidás el passcode, no podemos recuperar tus documentos cifrados. ¿Continuar?",
+      errorMismatch: "Los passcodes no coinciden",
+      errorWeak: "Passcode muy débil. Usá 4+ palabras o 12+ chars (letras+números+símbolos).",
+    },
+    unlock: {
+      title: "Desbloqueá tus documentos",
+      description: "Ingresá tu passcode para acceder al vault.",
+      unlockButton: "Desbloquear",
+      unlocking: "Desbloqueando...",
+      lockoutWait: "Esperá {seconds} antes de reintentar",
+      errorWrong: "Passcode incorrecto",
+    },
+    manage: {
+      title: "Cifrado activo",
+      description: "Tu vault está cifrado. Podés cambiar el passcode o desactivar el cifrado.",
+      changeButton: "Cambiar passcode",
+      deactivateButton: "Desactivar cifrado",
+      deactivating: "Desactivando...",
+      lockButton: "Bloquear ahora",
+    },
+    wiped: {
+      title: "Vault borrado",
+      description: "Se borraron tus documentos cifrados por demasiados intentos fallidos.",
+      startOverButton: "Empezar de nuevo",
+    },
+    strength: {
+      label: "Fuerza del passcode",
+      veryWeak: "Está muy débil",
+      weak: "Débil",
+      acceptable: "Aceptable",
+      strong: "Fuerte",
+      crackTime: "Te crackean en {time}",
+      suggestion: "Sugerencia: {hint}",
+    },
+    time: {
+      second: "segundo",
+      seconds: "segundos",
+      minute: "minuto",
+      minutes: "minutos",
+      hour: "hora",
+      hours: "horas",
+      day: "día",
+      days: "días",
+    },
+  },
+
+  // ─── HEALTH ───
+  health: {
+    title: "Salud y vacunas",
+    subtitle: "Vacunas y profilaxis recomendadas según tus destinos",
+    levels: { routine: "Rutina", recommended: "Recomendada", required: "Obligatoria", high_risk: "Alto riesgo" },
+    statuses: { not_started: "Sin empezar", in_progress: "En curso", completed: "Completada", expired: "Vencida" },
+    kpi: {
+      pendingVaccines: "Vacunas pendientes",
+      leadTime: "Lead time recomendado",
+      malariaCountries: "Profilaxis malaria",
+      countries: "Países",
+    },
+    malariaInfo: {
+      title: "Profilaxis antimalárica",
+      intro: "Países en tu viaje con riesgo:",
+      bullet1: "Consultá con infectólogo antes del viaje (6-8 semanas)",
+      bullet2: "Doxiciclina: USD 10-30, toma diaria, contraindicada embarazadas",
+      bullet3: "Malarone: USD 100-200, mejor tolerada",
+      bullet4: "Mefloquina: USD 30-60, semanal, no recomendada con depresión",
+    },
+    disclaimer: "Información orientativa. Consultá con tu médico/centro de vacunación antes de viajar.",
+    emptyTitle: "No tengo perfiles de salud",
+    emptyDescription: "Cargá ciudades a tu viaje para ver vacunas y profilaxis recomendadas.",
+  },
+
+  // ─── WALLET (Apple Wallet button) ───
+  wallet: {
+    button: "Agregar a Wallet",
+    loading: "Generando...",
+    certMissing: "Apple Wallet requiere certificado Apple Developer. Próximamente.",
+    errorPrefix: "No se pudo generar el pase",
+    downloadedToast: "Pase descargado — abrilo desde tus archivos para agregarlo a Wallet",
+    ariaLabel: "Agregar reserva a Apple Wallet",
+  },
+
   // ─── IMPORT (paste-email flow) ───
   import: {
     bandejaPerTripTitle: "Bandeja del viaje",

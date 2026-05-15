@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { heuristicItinerary, type GenerateItineraryPrompt, type DraftItinerary } from "@/lib/ai/itinerary-generator";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 
 // ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
@@ -185,12 +186,17 @@ export async function POST(req: NextRequest) {
     model: "sonnet",
   });
 
-  // Log usage REAL del provider — ya no worst-case.
+  // Log usage REAL del provider — ya no worst-case. Identifier per-user
+  // (`byok:user:<uuid>:generate-itinerary`) para rate-limit individual.
   if (rich) {
     const tokensIn = rich.usage.inputTokens;
     const tokensOut = rich.usage.outputTokens;
     const costUsd = estimateCostUsd(tokensIn, tokensOut, rich.model);
-    void recordProxyCall(source === "byok" ? "byok:itinerary" : "fallback:itinerary", {
+    const identifier = await getProxyIdentifier(
+      "generate-itinerary",
+      source === "byok" ? "byok" : "fallback",
+    );
+    void recordProxyCall(identifier, {
       endpoint: "/api/generate-itinerary",
       tokensIn,
       tokensOut,

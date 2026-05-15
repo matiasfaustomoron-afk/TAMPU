@@ -290,6 +290,16 @@ export function Sheet({
     if (open) setDragY(0);
   }, [open]);
 
+  // Escape key handler — close sheet on keypress when open (a11y).
+  React.useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
     dragState.current = { startY: t.clientY, startT: Date.now(), lastY: t.clientY, lastT: Date.now(), dragging: true };

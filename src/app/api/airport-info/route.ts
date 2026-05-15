@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { selectProvider, callLLM } from "@/lib/ai/providers";
+import { selectProvider, callLLMRich } from "@/lib/ai/providers";
+import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
+import { captureException } from "@/lib/observability/sentry";
 
 // ─── Dynamic airport info via Claude ───
 // Receives an IATA code, returns rich info (terminals, food, currency exchange,
@@ -54,17 +57,59 @@ Reglas:
 - Costos en USD aproximado. Duraciones en minutos.
 - NUNCA inventes nombres de restaurants/lounges si no existen. Solo categorías genéricas si es desconocido.`;
 
-async function llmAirportInfo(req: NextRequest, iata: string, name: string, city: string, country: string): Promise<AirportInfoResult | null> {
-  const { provider, key } = selectProvider(req);
+interface AirportInfoLLMResult {
+  result: AirportInfoResult | null;
+  provider: "anthropic" | "gemini";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  source: "byok" | "tampu" | "env" | "none";
+}
+
+async function llmAirportInfo(
+  req: NextRequest,
+  iata: string,
+  name: string,
+  city: string,
+  country: string,
+): Promise<AirportInfoLLMResult | null> {
+  // SECURITY: `allowTampuFallback: false` — el endpoint puede ser invocado
+  // para cualquier IATA del mundo. Cargar al budget de Tampu sin BYOK
+  // permitiría que un atacante mande mil IATAs y queme la key del server.
+  const { provider, key, source } = selectProvider(req, { allowTampuFallback: false });
   if (!provider || !key) return null;
   const userMessage = `Aeropuerto: ${name} (${iata})\nCiudad: ${city}\nPaís: ${country}\n\nDevolvé info práctica para un viajero.`;
-  const raw = await callLLM(provider, key, { system: SYSTEM, userMessage, maxTokens: 2048, timeoutMs: 25_000 });
-  if (!raw) return null;
+  // `callLLMRich` para tener usage real (input/output tokens + model) y
+  // poder loggear vía `recordProxyCall`.
+  const rich = await callLLMRich(provider, key, {
+    system: SYSTEM,
+    userMessage,
+    maxTokens: 2048,
+    timeoutMs: 25_000,
+    model: "haiku",
+  });
+  if (!rich) return null;
   try {
-    const clean = raw.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
     const parsed = JSON.parse(clean) as Omit<AirportInfoResult, "iata" | "generated" | "source">;
-    return { iata, generated: true, source: "claude", ...parsed };
-  } catch { return null; }
+    return {
+      result: { iata, generated: true, source: "claude", ...parsed },
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+      source,
+    };
+  } catch {
+    return {
+      result: null,
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+      source,
+    };
+  }
 }
 
 function fallback(iata: string): AirportInfoResult {
@@ -87,7 +132,30 @@ export async function POST(req: NextRequest) {
   if (!body?.iata) {
     return withCors(NextResponse.json({ error: "Missing iata" }, { status: 400 }), origin);
   }
-  const result = await llmAirportInfo(req, body.iata, body.name || body.iata, body.city || "", body.country || "");
-  if (result) return withCors(NextResponse.json(result), origin);
-  return withCors(NextResponse.json(fallback(body.iata)), origin);
+  // SECURITY: cap inputs (anti-abuse). Un atacante podría mandar `name` con
+  // 50kB de basura para inflar el input cost del LLM. 200 chars alcanza para
+  // cualquier nombre de aeropuerto / ciudad / país real.
+  const iata = body.iata.slice(0, 16);
+  const name = (body.name || body.iata).slice(0, 200);
+  const city = (body.city || "").slice(0, 200);
+  const country = (body.country || "").slice(0, 200);
+  const envelope = await llmAirportInfo(req, iata, name, city, country);
+  if (envelope) {
+    // Record usage real para budget / circuit breaker. Identifier per-user.
+    const identifier = await getProxyIdentifier(
+      "airport-info",
+      envelope.source === "byok" ? "byok" : "fallback",
+    );
+    const costUsd = estimateCostUsd(envelope.inputTokens, envelope.outputTokens, envelope.model);
+    void recordProxyCall(identifier, {
+      endpoint: "/api/airport-info",
+      tokensIn: envelope.inputTokens,
+      tokensOut: envelope.outputTokens,
+      costUsd,
+      provider: envelope.provider,
+      model: envelope.model,
+    }).catch((e) => captureException(e, { tag: "airport-info.record" }));
+    if (envelope.result) return withCors(NextResponse.json(envelope.result), origin);
+  }
+  return withCors(NextResponse.json(fallback(iata)), origin);
 }

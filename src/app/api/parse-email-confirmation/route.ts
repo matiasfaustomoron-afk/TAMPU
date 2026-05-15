@@ -3,6 +3,7 @@ import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { heuristicMultiParse, type ParsedBooking } from "@/lib/parsing/email-parser";
 import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 
 /**
@@ -225,10 +226,15 @@ export async function POST(req: NextRequest) {
     } else if (envelope.data === null) {
       warnings.push("LLM devolvió JSON inválido; cayó a heurística.");
     }
-    // Record usage real para budget / circuit breaker
+    // Record usage real para budget / circuit breaker. Identifier per-user
+    // para rate-limit individual.
     if (envelope) {
       const costUsd = estimateCostUsd(envelope.inputTokens, envelope.outputTokens, envelope.model);
-      void recordProxyCall(keySource === "byok" ? "byok:parse-email" : "fallback:parse-email", {
+      const identifier = await getProxyIdentifier(
+        "parse-email-confirmation",
+        keySource === "byok" ? "byok" : "fallback",
+      );
+      void recordProxyCall(identifier, {
         endpoint: "/api/parse-email-confirmation",
         tokensIn: envelope.inputTokens,
         tokensOut: envelope.outputTokens,

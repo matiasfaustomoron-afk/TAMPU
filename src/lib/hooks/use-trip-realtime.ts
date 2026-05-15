@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { recordSyncSuccess } from "@/lib/sync/status";
 
@@ -47,12 +48,24 @@ function colorForUser(id: string): string {
  * callers tenían que refetchear TODO en cada evento, incluso si solo cambió
  * una entity. Con el map, /itinerary refetchea solo days+reservations sin
  * tocar expenses/tasks.
+ *
+ * Handlers opcionales adicionales (`attachments`, `tripMembers`, `polls`) son
+ * capability-only: el hook se suscribe a las tablas correspondientes via
+ * postgres_changes pero solo dispara el callback si el caller lo provee. UI
+ * actual (vault, boarding-passes, trip-members modal) puede empezar a wirear
+ * estos handlers para refetch reactivo sin tocar el contrato del hook.
  */
 export interface TripRealtimeHandlers {
   reservations?: () => void;
   expenses?: () => void;
   tasks?: () => void;
   cities?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `attachments`. */
+  attachments?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `trip_members`. */
+  tripMembers?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `polls`. */
+  polls?: () => void;
 }
 
 export function useTripRealtime(tripId: string | null | undefined, onChange?: TripRealtimeHandlers): {
@@ -72,8 +85,14 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
       return;
     }
 
+    // Cleanup race fix: cuando el effect re-corre o desmonta antes de que el
+    // IIFE async resuelva `getUser()`, necesitamos asegurar que cualquier
+    // channel creado eventualmente sea destruido. Guardamos la ref del
+    // channel en una variable scoped al effect; el cleanup lee esta ref
+    // directamente. Si el channel todavía no fue asignado cuando corre el
+    // cleanup, `canceled=true` previene su creación en la rama async.
     let canceled = false;
-    let cleanup: (() => void) | null = null;
+    let channel: RealtimeChannel | null = null;
 
     (async () => {
       const { data } = await client.auth.getUser();
@@ -87,9 +106,17 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
         current_page: typeof window !== "undefined" ? window.location.pathname : undefined,
       };
 
-      const channel = client.channel(`trip:${tripId}`, {
+      channel = client.channel(`trip:${tripId}`, {
         config: { presence: { key: data.user.id } },
       });
+
+      // Si entre `getUser()` y acá el effect fue cancelado, abortar antes de
+      // subscribirse para evitar leak del channel recién creado.
+      if (canceled) {
+        client.removeChannel(channel);
+        channel = null;
+        return;
+      }
 
       // ─── DB changes ───
       // Dispatcher: cada tabla dispara solo su handler correspondiente.
@@ -118,11 +145,26 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
           "postgres_changes",
           { event: "*", schema: "public", table: "cities", filter: `trip_id=eq.${tripId}` },
           () => dispatch("cities"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "attachments", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("attachments"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "trip_members", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("tripMembers"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "polls", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("polls"),
         );
 
       // ─── Presence ───
       channel.on("presence", { event: "sync" }, () => {
-        if (canceled) return;
+        if (canceled || !channel) return;
         const state = channel.presenceState() as unknown as Record<string, PresenceMember[]>;
         const flat: PresenceMember[] = [];
         for (const key of Object.keys(state)) {
@@ -132,7 +174,7 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
       });
 
       channel.subscribe(async (status) => {
-        if (canceled) return;
+        if (canceled || !channel) return;
         if (status === "SUBSCRIBED") {
           setConnected(true);
           await channel.track(me);
@@ -140,16 +182,15 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
           setConnected(false);
         }
       });
-
-      cleanup = () => {
-        channel.untrack().catch(() => {});
-        client.removeChannel(channel);
-      };
     })();
 
     return () => {
       canceled = true;
-      if (cleanup) cleanup();
+      if (channel) {
+        channel.untrack().catch(() => {});
+        client.removeChannel(channel);
+        channel = null;
+      }
     };
   }, [client, mode, tripId]);
 

@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Shield, KeyRound, AlertTriangle, Check, Unlock, Trash2 } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
 import {
   hasPasscode,
   isUnlocked,
@@ -47,12 +48,23 @@ import { verifyTurnstileToken } from "@/lib/security/verify-turnstile";
 
 type Mode = "loading" | "setup" | "unlock" | "manage" | "wiped";
 
-function formatRemaining(ms: number): string {
+type TimeDict = {
+  second: string;
+  seconds: string;
+  minute: string;
+  minutes: string;
+  hour: string;
+  hours: string;
+  day: string;
+  days: string;
+};
+
+function formatRemaining(ms: number, time: TimeDict): string {
   const s = Math.ceil(ms / 1000);
-  if (s < 60) return `${s} segundo${s === 1 ? "" : "s"}`;
+  if (s < 60) return `${s} ${s === 1 ? time.second : time.seconds}`;
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (m < 60) return r === 0 ? `${m} minuto${m === 1 ? "" : "s"}` : `${m} min ${r} s`;
+  if (m < 60) return r === 0 ? `${m} ${m === 1 ? time.minute : time.minutes}` : `${m} min ${r} s`;
   const h = Math.floor(m / 60);
   return `${h} h ${m % 60} min`;
 }
@@ -61,6 +73,8 @@ function PasscodeContent() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/settings";
+  const { t } = useI18n();
+  const tp = t.passcode;
 
   const [mode, setMode] = useState<Mode>("loading");
   const [pin, setPin] = useState("");
@@ -127,10 +141,10 @@ function PasscodeContent() {
   const handleSetup = async () => {
     setError(null);
     if (!strength?.ok) {
-      setError(strength?.reason || "Passcode muy débil. Probá una passphrase de 4 palabras.");
+      setError(strength?.reason || tp.setup.errorWeak);
       return;
     }
-    if (pin !== pinConfirm) { setError("Los passcodes no coinciden."); return; }
+    if (pin !== pinConfirm) { setError(tp.setup.errorMismatch); return; }
     // Anti-bot: verificar Turnstile antes de aceptar el setup
     const captcha = await verifyTurnstileToken(turnstileToken);
     if (!captcha.ok) {
@@ -160,7 +174,7 @@ function PasscodeContent() {
     const ls = getLockoutState();
     if (ls.wiped) { setMode("wiped"); return; }
     if (ls.locked) {
-      setError(`Esperá ${formatRemaining(ls.remainingMs)} antes del próximo intento.`);
+      setError(tp.unlock.lockoutWait.replace("{seconds}", formatRemaining(ls.remainingMs, tp.time)));
       setLockout(ls);
       return;
     }
@@ -178,9 +192,9 @@ function PasscodeContent() {
           return;
         }
         if (after.locked) {
-          setError(`Passcode incorrecto. Te quedan ${after.attemptsLeft} intento${after.attemptsLeft === 1 ? "" : "s"}. Esperá ${formatRemaining(after.remainingMs)}.`);
+          setError(`${tp.unlock.errorWrong}. ${tp.unlock.lockoutWait.replace("{seconds}", formatRemaining(after.remainingMs, tp.time))}`);
         } else {
-          setError(`Passcode incorrecto. Te quedan ${after.attemptsLeft} intento${after.attemptsLeft === 1 ? "" : "s"} antes del wipe.`);
+          setError(`${tp.unlock.errorWrong}. ${after.attemptsLeft} ${after.attemptsLeft === 1 ? "intento" : "intentos"} restantes.`);
         }
         setBusy(false);
         return;
@@ -205,9 +219,7 @@ function PasscodeContent() {
   };
 
   const handleForget = async () => {
-    if (!confirm(
-      "Si olvidás el passcode, los datos cifrados quedan irrecuperables: API key y todo el Vault. Esta acción no se puede deshacer. ¿Continuar?"
-    )) return;
+    if (!confirm(tp.setup.confirmDialog)) return;
     await forgetPasscode();
     toast("Passcode eliminado", "info");
     await refreshMode();
@@ -230,16 +242,16 @@ function PasscodeContent() {
     <div className="space-y-6 pb-20 lg:pb-0 animate-fade-in max-w-md mx-auto">
       <header className="px-2 pt-2">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          {mode === "setup" && <><Shield className="w-6 h-6" />Configurar passcode</>}
-          {mode === "unlock" && <><Lock className="w-6 h-6" />Desbloquear Tampu</>}
-          {mode === "manage" && <><Unlock className="w-6 h-6" />Seguridad</>}
-          {mode === "wiped" && <><Trash2 className="w-6 h-6 text-destructive" />Vault borrado</>}
+          {mode === "setup" && <><Shield className="w-6 h-6" />{tp.setup.title}</>}
+          {mode === "unlock" && <><Lock className="w-6 h-6" />{tp.unlock.title}</>}
+          {mode === "manage" && <><Unlock className="w-6 h-6" />{tp.manage.title}</>}
+          {mode === "wiped" && <><Trash2 className="w-6 h-6 text-destructive" />{tp.wiped.title}</>}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {mode === "setup" && "Cifrá tu API key y el Vault con un passcode. Sin él, nadie puede leerlos — ni siquiera con acceso al dispositivo."}
-          {mode === "unlock" && "Tu API key y Vault están cifrados. Ingresá el passcode para usarlos."}
-          {mode === "manage" && "Sesión desbloqueada. Auto-lock por inactividad: 15 min."}
-          {mode === "wiped" && "Tu vault fue borrado por 10 intentos fallidos."}
+          {mode === "setup" && tp.setup.description}
+          {mode === "unlock" && tp.unlock.description}
+          {mode === "manage" && tp.manage.description}
+          {mode === "wiped" && tp.wiped.description}
         </p>
       </header>
 
@@ -256,7 +268,7 @@ function PasscodeContent() {
               irrecuperables (es by-design — si hubiera backdoor, no sería seguro).
             </p>
             <div>
-              <label className="text-[10px] uppercase text-muted-foreground">Passcode</label>
+              <label className="text-[10px] uppercase text-muted-foreground">{tp.setup.inputLabel}</label>
               <Input
                 type="password"
                 value={pin}
@@ -268,11 +280,11 @@ function PasscodeContent() {
               />
               {/* Strength bar — barra Hornocal con 3 estados. */}
               {pin.length > 0 && strength && (
-                <StrengthBar strength={strength} />
+                <StrengthBar strength={strength} strengthLabels={tp.strength} />
               )}
             </div>
             <div>
-              <label className="text-[10px] uppercase text-muted-foreground">Repetir passcode</label>
+              <label className="text-[10px] uppercase text-muted-foreground">{tp.setup.confirmLabel}</label>
               <Input
                 type="password"
                 value={pinConfirm}
@@ -294,7 +306,7 @@ function PasscodeContent() {
               disabled={busy || !strength?.ok || pin !== pinConfirm || !turnstileToken}
               className="w-full"
             >
-              {busy ? "Configurando..." : "Activar cifrado"}
+              {busy ? tp.setup.activating : tp.setup.activateButton}
             </Button>
             <p className="text-[10px] text-muted-foreground">
               PBKDF2-SHA256 · 600.000 iteraciones · AES-GCM(256). La master key se deriva
@@ -326,7 +338,7 @@ function PasscodeContent() {
               <div className="rounded-md bg-warning/10 border border-warning/40 px-3 py-2">
                 <p className="text-[11px] text-warning-foreground flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3 text-warning" />
-                  Esperá <strong className="mx-1">{formatRemaining(lockout.remainingMs)}</strong> antes del próximo intento.
+                  {tp.unlock.lockoutWait.replace("{seconds}", "")} <strong className="mx-1">{formatRemaining(lockout.remainingMs, tp.time)}</strong>
                 </p>
                 {lockout.attemptsLeft > 0 && (
                   <p className="text-[10px] text-muted-foreground mt-1">
@@ -341,7 +353,7 @@ function PasscodeContent() {
               </p>
             )}
             <Button onClick={handleUnlock} disabled={busy || !pin || lockout.locked} className="w-full">
-              {busy ? "Desbloqueando..." : lockout.locked ? "Esperá..." : "Desbloquear"}
+              {busy ? tp.unlock.unlocking : lockout.locked ? "Esperá..." : tp.unlock.unlockButton}
             </Button>
             <button
               onClick={handleForget}
@@ -358,7 +370,7 @@ function PasscodeContent() {
         <>
           <Card className="border-l-4 border-l-success">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Check className="w-4 h-4 text-success" />Cifrado activo</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Check className="w-4 h-4 text-success" />{tp.manage.title}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
@@ -366,7 +378,7 @@ function PasscodeContent() {
                 tras 15 minutos de inactividad o si bloqueás manualmente.
               </p>
               <Button onClick={handleLock} variant="outline" className="gap-2">
-                <Lock className="w-4 h-4" />Bloquear ahora
+                <Lock className="w-4 h-4" />{tp.manage.lockButton}
               </Button>
             </CardContent>
           </Card>
@@ -406,7 +418,7 @@ function PasscodeContent() {
               en la nube (no aplica a Tampu by default), restauralo desde ahí.
             </p>
             <Button onClick={handleStartOver} className="w-full">
-              Crear un passcode nuevo
+              {tp.wiped.startOverButton}
             </Button>
           </CardContent>
         </Card>
@@ -425,7 +437,21 @@ export default function PasscodePage() {
 
 // ─── Strength bar — paleta Hornocal (oxblood/ocre/sage) ────────────────────
 
-function StrengthBar({ strength }: { strength: PasscodeStrength }) {
+function StrengthBar({
+  strength,
+  strengthLabels,
+}: {
+  strength: PasscodeStrength;
+  strengthLabels: {
+    veryWeak: string;
+    weak: string;
+    acceptable: string;
+    strong: string;
+    crackTime: string;
+    suggestion: string;
+    label: string;
+  };
+}) {
   const score = strength.score ?? 0;
   // Mapeo: score 0–2 → débil (rojo oxblood), 3 → aceptable (ocre), 4 → fuerte (sage).
   const level: "weak" | "ok" | "strong" =
@@ -447,10 +473,10 @@ function StrengthBar({ strength }: { strength: PasscodeStrength }) {
 
   const label = {
     weak: strength.crackTime
-      ? `Te crackean en ${strength.crackTime}`
-      : "Está muy débil",
-    ok: "Aceptable",
-    strong: "Fuerte",
+      ? strengthLabels.crackTime.replace("{time}", strength.crackTime)
+      : strengthLabels.veryWeak,
+    ok: strengthLabels.acceptable,
+    strong: strengthLabels.strong,
   }[level];
 
   return (
