@@ -365,3 +365,55 @@ Commit Iter 4: `cf7d96e`.
 
 ## Iteration 5 — 2026-05-15T13:53:30Z
 
+**Pipeline**: 5 audit agents (~40 findings reales) → top-15 priorizados → 5 fix agents paralelos con territorios disjuntos → 36 fixes aplicados + 1 skip → tsc 0 ✓ + vitest 234/234 ✓ → commit `4b66b1d` → push → Vercel CLI deploy production → smoke /welcome 200, /login 200, /api/curated-destinations JSON ✓.
+
+### Cambios (36) por dominio
+
+**IA (8)** — `classify-document` rate-limit + checkDailyBudget guard cuando `source=tampu` (DoS protect); `categorize-expense` migrado a `extractJson<T>` (último endpoint legacy); `providers.ts` temperature param + Gemini default 0.2 (era 0.5, reducía hallucination JSON-strict); `agentic.ts` captureException Sentry + max_tokens 800 default (1500 solo turn final); `parse-email-confirmation` BookingType validator + coerce amounts string→number; `airport-info` Array.isArray coerce 6 arrays; `whatsapp/parser.ts` regla dura voseo argentino.
+
+**Code (7)** — `use-trip-data.ts:useTripFullDataset.ready=!loading` (era `!!data` siempre truthy → dashboard "vacío" pre-load); `invalidateTrip` ahora invalida `tripMembers`; `polls/page.tsx` realtime channel duplicado eliminado (usa `useTripRealtime`); `members/page.tsx` revokeMember/removeMember via data layer; `supabase-generated.ts` 13 TableRow stubs (trip_members + 12 más); `middleware.ts` prod sin envs → redirect `/welcome?config=missing` (era pass-through inseguro); `query-provider.tsx` staleTime 60s + gcTime 10m.
+
+**Diseño+i18n (12)** — `/more` i18n completo (~40 keys); `/split` i18n + "Split"→"Compartido" ES; `/alerts` t.alerts.* completo + plural helper; `create-poll` sheet ~12 keys t.pollsCreate; `emergency` "Checklist mental"→"Repaso mental"; `settings` "Tracking GPS"→"Ubicación GPS"; `expense-fab`+`more-fab`+`assistant-fab` aria-labels i18n + t.common.fabs.*; `AddressDisplay`+`sync-indicator` i18n; `/map` i18n + plural noches; `ai-generator-sheet` spinner→skeleton bars; paridad EN/ES verificada.
+
+**Innovación (5)** — `RecapShareButton` wired en `/today` (era ghost orphan Iter 4 — fix más alto ROI); `/api/recap/[tripId]` enriquecido 4→5 stats (días/países/vuelos/docs/reservas + cities.country distinct); `src/app/api/recap/year/[userId]/route.tsx` NEW (Tampu Unpacked anual: tripsCount + totalDaysInYear + countries + topCountry + flightsCount + topMonth); `src/app/recap/year/[userId]/page.tsx` NEW (HTML wrapper og:image); `/api/print-book` devuelve checkoutUrl placeholder + orderId (MercadoPago wire deferred Iter 6); migration `00037_attachment_expiry.sql` (column + index parcial).
+
+**Funcionalidad (5 + 1 skip)** — Migration `00038_recap_public.sql` (trips.recap_public bool default false); `/api/recap/[tripId]` gate 404 si `recap_public≠true` (privacy by default — coordinado con Innov stats); `welcome/page.tsx` guards `pathname+typeof window` anti-flicker; `share/page.tsx` destHue restringido familia tierra `15+(Math.abs(h)%80)`; `assistant/page.tsx` readVersioned demo (era JSON.parse crudo unsafe); `reservations` "Crear poll" pasa `?suggest=tipo`. SKIP: rename `travel-os-anthropic-key-change` event (requería sweep batch coordinado fuera de territorio).
+
+### Verificación
+
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` 234/234 ✓ (sin regression)
+- Deploy production READY ✓
+- Smoke /welcome 200 ✓, /login 200 ✓, /api/curated-destinations JSON ✓
+
+### USER ACTIONS post-Iter 5
+
+**P0 CRÍTICO**:
+- **Aplicar migration 00037_attachment_expiry.sql** en Supabase SQL Editor (column expires_at + index parcial)
+- **Aplicar migration 00038_recap_public.sql** en Supabase SQL Editor (trips.recap_public bool default false)
+- Sin 00038, **TODOS los recaps devuelven 404** (correcto — privacy opt-in by default). El user debe togglear `recap_public=true` en /settings o por DB para activar share.
+
+### Token cost estimado Iter 5
+
+- 5 audit agents: ~610k input tokens
+- 5 fix agents: ~503k input tokens
+- Verify + commit + deploy: ~5k
+- Total: ~1.12M tokens (~USD 8 a precios Sonnet)
+
+### Observaciones para Iter 6+
+
+1. **UI toggle `recap_public`** en `/settings` o `/share` — sin esto, el endpoint funciona pero está bloqueado siempre por defecto.
+2. **MercadoPago checkout** para print-book (endpoint listo, falta integration).
+3. **SSE streaming** `/api/assistant` + `/api/generate-itinerary` — sigue siendo carry-over (Iter 4 obs).
+4. **Assistant multi-turn chat** — único response state actual, single-shot.
+5. **Journal Supabase sync** — entries siguen en localStorage (P0 unfixed).
+6. **`/itinerary` day ops** (drag&drop, edit, complete) — P0 unfixed.
+7. **`/settings` i18n masivo** (~1234 LOC) — sigue deferred, sólo "Tracking GPS" fixeado.
+8. **Storage keys legacy** `travel-os-*` → `tampu-*` sweep batch coordinado.
+9. **WhatsApp outbound pre-flight cron** — requiere prod Twilio ENVs.
+10. **mDeleteExpense/Reservation scoped invalidation** — skipped en Iter 5 (refactor breaking de API hook).
+11. **Vault Capacitor alert/confirm** → Sheet pattern — skipped (12 call sites, requiere `useConfirmSheet` hook nuevo).
+12. **Email-in GET handler** — Funcionalidad agent reportó como TODO (paso #2 del prompt), verificar si quedó implementado.
+
+Commit Iter 5: `4b66b1d`.
+
