@@ -39,6 +39,7 @@ const es = {
     remaining: "restante",
     onTrack: "Al día",
     overBy: "Excede en",
+    noActiveTrip: "Sin viaje activo",
   },
 
   // ─── NAV ───
@@ -269,6 +270,48 @@ const es = {
     noTrips: "Sin viajes todavía",
     createFirst: "Creá tu primer viaje",
     active: "Activo",
+    edit: {
+      back: "Volver",
+      title: "Editar viaje",
+      sectionDataTitle: "Datos del viaje",
+      name: "Nombre",
+      destination: "Destino",
+      startDate: "Llegada",
+      endDate: "Regreso",
+      budget: "Presupuesto",
+      currency: "Moneda",
+      status: "Estado",
+      statusPlanning: "Planificando",
+      statusActive: "En curso",
+      statusCompleted: "Completado",
+      statusArchived: "Archivado",
+      notes: "Notas",
+      save: "Guardar cambios",
+      saving: "Guardando…",
+      cancel: "Cancelar",
+    },
+  },
+
+  // ─── VISAS ───
+  visas: {
+    title: "Visas",
+    passport: "Pasaporte",
+    destinations: "destinos",
+    openActions: "Acciones abiertas",
+    totalCost: "Costo total",
+    maxLead: "Lead máximo",
+    beforeTrip: "antes del viaje",
+    maxStay: "Estadía max",
+    cost: "Costo",
+    lead: "Lead",
+    applyOnline: "Aplicar online",
+    docLoaded: "doc cargado",
+    verified: "Verificado",
+    noDataTitle: "No tengo datos de visa para estos países",
+    noDataDescription: "Cargá ciudades con country reconocido.",
+    emptyTitle: "Cargá ciudades para ver visas",
+    sourcesNote:
+      'Datos verificados contra Wikipedia "Visa requirements for Argentine citizens" e ICA PNG en mayo 2026. Política migratoria cambia: confirmá con la embajada antes de aplicar.',
   },
 
   // ─── STATUS LABELS (visual only) ───

@@ -6,7 +6,7 @@ import { Sheet } from "@/components/ios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { createLocalPoll, type Poll } from "@/lib/polls/poll";
+import { createLocalPoll, createPollOnline, type Poll } from "@/lib/polls/poll";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { logActivity } from "@/lib/collab/activity-feed";
 import { haptic } from "@/lib/native/platform";
@@ -32,7 +32,7 @@ export function CreatePoll({
   onCreated?: (poll: Poll) => void;
   variant?: "row" | "compact";
 }) {
-  const { user } = useSupabase();
+  const { user, client, mode } = useSupabase();
   const userId = user?.id || "demo-user";
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Tú";
 
@@ -60,7 +60,7 @@ export function CreatePoll({
     setOptions(opts => opts.length > 2 ? opts.filter((_, i) => i !== idx) : opts);
   };
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
     const valid = options.filter(o => o.label.trim()).map(o => ({
       label: o.label.trim(),
       description: o.description.trim() || undefined,
@@ -69,14 +69,23 @@ export function CreatePoll({
       toast("Pregunta y al menos 2 opciones", "warn");
       return;
     }
-    const poll = createLocalPoll({
+    const input = {
       tripId,
       question: question.trim(),
       options: valid,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       userId,
       displayName,
-    });
+    };
+    let poll: Poll | null = null;
+    if (mode === "online" && client) {
+      poll = await createPollOnline(client, input);
+      // Si online falla (tabla missing / network), fallback a local para no
+      // perder el input del user.
+      if (!poll) poll = createLocalPoll(input);
+    } else {
+      poll = createLocalPoll(input);
+    }
     haptic("medium");
     toast("Poll creado", "success");
     logActivity({
@@ -93,7 +102,7 @@ export function CreatePoll({
     setQuestion(defaultQuestion || "");
     setOptions([{ label: "", description: "" }, { label: "", description: "" }]);
     setDeadline("");
-  }, [tripId, question, options, deadline, userId, displayName, defaultQuestion, onCreated]);
+  }, [tripId, question, options, deadline, userId, displayName, defaultQuestion, onCreated, mode, client]);
 
   return (
     <>

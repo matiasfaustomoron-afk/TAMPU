@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fetchDestinationGuide, groupedByTab, type FetchGuideResult, type POI } from "@/lib/wikivoyage-client";
 import { Bus, Wallet, Utensils, MapPin, Shield, BookOpen, RefreshCw, Loader2, ExternalLink, WifiOff, ChevronDown, Map, Camera } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { useI18n } from "@/i18n/provider";
 
 type Tab = "transport" | "money" | "food" | "see" | "safety";
 
@@ -19,6 +20,7 @@ export function DestinationGuideCard({
   destination,
   defaultOpen = false,
 }: { destination: string; defaultOpen?: boolean }) {
+  const { t } = useI18n();
   const [result, setResult] = useState<FetchGuideResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("food");
@@ -155,8 +157,8 @@ export function DestinationGuideCard({
           <button
             onClick={() => setExpanded(false)}
             className="pressable w-8 h-8 rounded-full bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
-            aria-label="Cerrar"
-            title="Cerrar"
+            aria-label={t.common.close}
+            title={t.common.close}
           >
             <ChevronDown className="w-3.5 h-3.5 rotate-180" />
           </button>
@@ -234,6 +236,7 @@ export function DestinationGuideCard({
 }
 
 function HeaderRow({ title, onCollapse }: { title: string; onCollapse: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start justify-between gap-3">
       <p className="ios-eyebrow !p-0 flex items-center gap-1.5">
@@ -242,7 +245,7 @@ function HeaderRow({ title, onCollapse }: { title: string; onCollapse: () => voi
       <button
         onClick={onCollapse}
         className="pressable w-8 h-8 rounded-full bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
-        aria-label="Cerrar"
+        aria-label={t.common.close}
       >
         <ChevronDown className="w-3.5 h-3.5 rotate-180" />
       </button>

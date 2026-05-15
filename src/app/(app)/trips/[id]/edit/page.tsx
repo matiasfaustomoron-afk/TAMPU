@@ -9,8 +9,6 @@
 //
 // Acceso desde /trips: cada trip card tiene un icono lápiz que navega acá.
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useState, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,15 +74,21 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
     setBusy(true);
     try {
       const totalBudget = parseFloat(budget) || 0;
+      // Preserve el % de contingency que el trip ya tenía. Si el usuario
+      // había seteado 15%, no lo bajamos a 10% solo porque editó el budget.
+      // Si el trip no tenía budget previo (división por 0), fallback a 10%.
+      const tripBeforeEdit = trips?.find((tt) => tt.id === id);
+      const prevBudget = tripBeforeEdit?.total_budget ?? 0;
+      const prevContingency = tripBeforeEdit?.contingency_amount ?? 0;
+      const currentPct = prevBudget > 0 ? prevContingency / prevBudget : 0.10;
+      const newContingencyAmount = Math.round(totalBudget * currentPct);
       await updateTrip(id, {
         name: name.trim(),
         destination: destination.trim(),
         start_date: start,
         end_date: end,
         total_budget: totalBudget,
-        // Recalcular contingency en base al nuevo budget (mantenemos el %
-        // que tenía el trip — si no lo tiene, fallback a 10).
-        contingency_amount: Math.round(totalBudget * 0.1),
+        contingency_amount: newContingencyAmount,
         base_currency: currency,
         status,
         description: description.trim() || null,
@@ -97,7 +101,7 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
     } finally {
       setBusy(false);
     }
-  }, [id, name, destination, start, end, budget, currency, status, description, updateTrip, refetch, router]);
+  }, [id, name, destination, start, end, budget, currency, status, description, updateTrip, refetch, router, trips]);
 
   if (loading || !initialized) {
     return (
@@ -111,8 +115,8 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader
-        title="Editar viaje"
-        subtitle={name || "Detalles del viaje"}
+        title={t.trips.edit.title}
+        subtitle={name || t.trips.edit.sectionDataTitle}
         action={
           <Button
             variant="outline"
@@ -121,21 +125,21 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
             className="gap-1"
           >
             <ChevronLeft className="w-4 h-4" />
-            Volver
+            {t.trips.edit.back}
           </Button>
         }
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Datos del viaje</CardTitle>
+          <CardTitle>{t.trips.edit.sectionDataTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Field label="Nombre *">
+          <Field label={`${t.trips.edit.name} *`}>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Seúl 2026" />
           </Field>
 
-          <Field label="Destino *">
+          <Field label={`${t.trips.edit.destination} *`}>
             <Input
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
@@ -144,10 +148,10 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
           </Field>
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Llegada *">
+            <Field label={`${t.trips.edit.startDate} *`}>
               <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
-            <Field label="Regreso *">
+            <Field label={`${t.trips.edit.endDate} *`}>
               <Input
                 type="date"
                 value={end}
@@ -158,7 +162,7 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            <Field label="Presupuesto" className="col-span-2">
+            <Field label={t.trips.edit.budget} className="col-span-2">
               <Input
                 type="number"
                 value={budget}
@@ -166,7 +170,7 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
                 placeholder="0"
               />
             </Field>
-            <Field label="Moneda">
+            <Field label={t.trips.edit.currency}>
               <SelectNative value={currency} onChange={(e) => setCurrency(e.target.value)}>
                 {CURRENCIES.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -177,19 +181,19 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
             </Field>
           </div>
 
-          <Field label="Estado">
+          <Field label={t.trips.edit.status}>
             <SelectNative
               value={status}
               onChange={(e) => setStatus(e.target.value as Trip["status"])}
             >
-              <option value="planning">Planificando</option>
-              <option value="active">En curso</option>
-              <option value="completed">Completado</option>
-              <option value="archived">Archivado</option>
+              <option value="planning">{t.trips.edit.statusPlanning}</option>
+              <option value="active">{t.trips.edit.statusActive}</option>
+              <option value="completed">{t.trips.edit.statusCompleted}</option>
+              <option value="archived">{t.trips.edit.statusArchived}</option>
             </SelectNative>
           </Field>
 
-          <Field label="Notas">
+          <Field label={t.trips.edit.notes}>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -201,10 +205,10 @@ export default function EditTripPage({ params }: { params: Promise<{ id: string 
           <div className="flex gap-2 pt-2">
             <Button onClick={handleSave} disabled={busy} className="gap-1">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {busy ? "Guardando…" : "Guardar cambios"}
+              {busy ? t.trips.edit.saving : t.trips.edit.save}
             </Button>
             <Button variant="outline" onClick={() => router.push("/trips")} disabled={busy}>
-              Cancelar
+              {t.trips.edit.cancel}
             </Button>
           </div>
 

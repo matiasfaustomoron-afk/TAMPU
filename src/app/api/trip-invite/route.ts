@@ -47,6 +47,15 @@ export async function POST(req: NextRequest) {
   // que también compara contra `user.email?.toLowerCase().trim()`.
   const normalizedEmail = body.email.toLowerCase().trim();
 
+  // ─── Self-invite check ──────────────────────────────────────────────────
+  // El owner ya es miembro del trip — invitarse a sí mismo crea una fila
+  // duplicada pendiente que confunde la UI y rompe el accept flow (porque
+  // el constraint email-unique-per-trip dispara 23505 más tarde).
+  const callerEmail = user.email?.toLowerCase().trim();
+  if (callerEmail && normalizedEmail === callerEmail) {
+    return NextResponse.json({ error: "No podés invitarte a vos mismo" }, { status: 400 });
+  }
+
   // RLS verifica que el caller sea owner del trip.
   const { data, error } = await sb
     .from("trip_members")

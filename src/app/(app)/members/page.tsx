@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Users, UserPlus, Check, X, Loader2, Mail, Shield, Eye } from "lucide-react";
 import { LargeTitle, Sheet } from "@/components/ios";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { toast } from "@/components/ios/toast";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
 import { useSupabase } from "@/lib/context/supabase-provider";
+import { setActiveTrip } from "@/lib/data/trips";
 import { track, EVENTS } from "@/lib/analytics";
 
 /**
@@ -55,6 +56,7 @@ const ROLE_TONE: Record<Member["role"], string> = {
 function SharePageContent() {
   const { data: trip } = useActiveTrip();
   const { client, mode } = useSupabase();
+  const router = useRouter();
   const [members, setMembers] = useState<Member[]>([]);
   const [pendingForMe, setPendingForMe] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,13 +172,25 @@ function SharePageContent() {
         } else {
           toast("Aceptaste la invitación", "success");
           track(EVENTS.TRIP_INVITE_ACCEPTED);
-          refetch();
+          await refetch();
+          // Activar el trip recién aceptado y mandar al user al "today" del
+          // viaje. La RPC set_active_trip valida ownership server-side; si
+          // falla, dejamos al user en /members con un toast suave.
+          const acceptedTripId: string | undefined = json?.membership?.trip_id ?? json?.trip_id;
+          if (acceptedTripId && client) {
+            try {
+              await setActiveTrip(client, acceptedTripId);
+              router.push("/today");
+            } catch (err) {
+              console.warn("[members] setActiveTrip after accept failed:", err);
+            }
+          }
         }
       } catch {
         toast("Error de red", "error");
       }
     },
-    [refetch],
+    [refetch, client, router],
   );
 
   const declineInvite = useCallback(

@@ -107,6 +107,12 @@ export default function ReservationsPage() {
   }, [trip, newRes, addReservation, refetch]);
 
   // Load attachments to display under each reservation
+  // TODO Iter 3: migrar a `useAttachments(trip?.id)` — el hook ya existe en
+  // use-trip-data.ts y vault/boarding-passes ya lo usan. Dejamos este fetch
+  // directo por ahora porque la lógica de la página depende de un useState
+  // local que también recibe data de AttachDocButton (que upload independiente);
+  // unificar requiere refactor del callback path. Footprint riesgo > beneficio
+  // este iter, queda como follow-up explícito.
   useEffect(() => {
     if (!trip) return;
     let cancelled = false;

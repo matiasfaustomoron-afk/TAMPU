@@ -9,6 +9,7 @@ import {
   useRecentActivity, timeAgo,
   type ActivityEvent, type ActivityVerb, type ActivityEntity,
 } from "@/lib/collab/activity-feed";
+import { useI18n } from "@/i18n/provider";
 
 interface Props {
   tripId: string | null | undefined;
@@ -31,13 +32,14 @@ export function ActivityFeed({
   scrollable = true,
   className,
 }: Props) {
+  const { t } = useI18n();
   const entries = useRecentActivity(tripId, limit);
   const tall = scrollable && entries.length > 6;
 
   if (!tripId) {
     return (
       <div className="ios-card p-4 text-center text-[13px] text-muted-foreground">
-        Sin viaje activo.
+        {t.common.noActiveTrip}.
       </div>
     );
   }

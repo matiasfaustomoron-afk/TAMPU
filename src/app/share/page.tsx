@@ -14,6 +14,8 @@ interface SharedTrip {
   cities: string[];
   flights: { desc: string; provider: string; locator?: string | null; date: string | null }[];
   hotels: { desc: string; provider: string; in: string | null; out: string | null }[];
+  /** Unix timestamp (segundos) de expiración. Opcional para retro-compat con links viejos. */
+  exp?: number;
 }
 
 function decodeFromUrl(): { data: SharedTrip | null; err: string | null } {
@@ -25,6 +27,11 @@ function decodeFromUrl(): { data: SharedTrip | null; err: string | null } {
     const json = decodeURIComponent(escape(atob(decodeURIComponent(b64))));
     const parsed = JSON.parse(json) as SharedTrip;
     if (parsed.v !== 1) return { data: null, err: "Versión no soportada" };
+    // TTL check — si el emisor incluyó `exp` y ya pasó, rechazamos el link.
+    // Links pre-TTL (sin `exp`) se aceptan sin reservas (retro-compat).
+    if (parsed.exp && Date.now() / 1000 > parsed.exp) {
+      return { data: null, err: "Este link expiró. Pedile uno nuevo al owner." };
+    }
     return { data: parsed, err: null };
   } catch {
     return { data: null, err: "No pude decodificar el itinerario" };

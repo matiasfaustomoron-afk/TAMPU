@@ -85,7 +85,7 @@ export default function HealthPage() {
       </div>
 
       {plan.countries.length === 0 ? (
-        <EmptyState title="No tengo perfiles de salud para los destinos cargados" description="Cargá ciudades en el itinerario." icon={<Heart className="w-8 h-8" />} />
+        <EmptyState title="No tengo perfiles de salud para los destinos cargados" description="Cargá ciudades en el itinerario." icon={<Heart className="w-8 h-8" />} action={<Link href="/itinerary"><Button>Cargar ciudades</Button></Link>} />
       ) : (
         <>
           {/* Aggregated vaccine list */}

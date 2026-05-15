@@ -37,6 +37,7 @@ import {
   fetchPackingItems, mutatePackingItem, insertPackingItem,
   fetchTripDays, fetchCities, upsertTripDay,
 } from "@/lib/data/entities";
+import { fetchAttachments, insertAttachment, deleteAttachment } from "@/lib/data/attachments";
 
 // Demo data layer (localStorage, isolated)
 import * as demo from "@/lib/demo/demo-store";
@@ -49,7 +50,7 @@ import { buildCommandCenter, type CommandCenterData } from "@/lib/domain/command
 
 import type {
   Trip, Task, Expense, Reservation, BudgetCategory,
-  Document, PackingItem, TripDay, City,
+  Document, PackingItem, TripDay, City, Attachment,
   DashboardData, BudgetSummary, Alert,
 } from "@/lib/types/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -71,7 +72,28 @@ const qk = {
   packingItems: (mode: string, tripId: string | undefined) => ["packingItems", mode, tripId ?? null] as const,
   tripDays: (mode: string, tripId: string | undefined) => ["tripDays", mode, tripId ?? null] as const,
   cities: (mode: string, tripId: string | undefined) => ["cities", mode, tripId ?? null] as const,
+  attachments: (mode: string, tripId: string | undefined) => ["attachments", mode, tripId ?? null] as const,
 } as const;
+
+// ─── Demo store helpers: attachments live in localStorage (`travel-os-vault-<tripId>`) ────
+//
+// El demo path no usa `demo-store.ts` (que no expone APIs de attachments). En
+// modo demo, vault/boarding-passes serializan attachments en localStorage. Acá
+// replicamos esa lectura para que el hook tenga UNA fuente de verdad consistente.
+function readDemoAttachments(tripId: string): Attachment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`travel-os-vault-${tripId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    // Soporta tanto v1 wrapper `{ v, data }` como v0 array directo.
+    if (Array.isArray(parsed)) return parsed as Attachment[];
+    if (parsed && Array.isArray(parsed.data)) return parsed.data as Attachment[];
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 // ─── Generic async hook ─────────────────────────────────────────────────
 //
@@ -274,6 +296,23 @@ export function useCities(tripId: string | undefined) {
       if (!tripId) return Promise.resolve([]);
       if (mode === "online" && client) return fetchCities(client, tripId);
       if (mode === "demo") return Promise.resolve(demo.getCities(tripId));
+      return Promise.resolve([]);
+    },
+    enabled,
+    [],
+  );
+}
+
+export function useAttachments(tripId: string | undefined) {
+  const { client, mode } = useSupabase();
+  const h = useHydrated();
+  const enabled = h && !!tripId && (mode === "online" ? !!client : true);
+  return useQuery<Attachment[]>(
+    qk.attachments(mode, tripId),
+    () => {
+      if (!tripId) return Promise.resolve([]);
+      if (mode === "online" && client) return fetchAttachments(client, tripId);
+      if (mode === "demo") return Promise.resolve(readDemoAttachments(tripId));
       return Promise.resolve([]);
     },
     enabled,
@@ -501,6 +540,31 @@ export function useMutations() {
     },
   });
 
+  // ─── Attachments ───
+  // Demo mode escribe a localStorage directamente desde los call sites (vault page);
+  // las mutations online pasan por el data layer. Después de cualquier mutación,
+  // invalidamos ['attachments', tripId] para refrescar listas en vault + boarding
+  // passes simultáneamente.
+  const mAddAttachment = useMutation({
+    mutationFn: async (a: Omit<Attachment, "id" | "created_at" | "updated_at">) => {
+      if (mode === "online" && client) return withSync(insertAttachment(client, a));
+      return null;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["attachments", mode, vars.trip_id] });
+    },
+  });
+
+  const mDeleteAttachment = useMutation({
+    mutationFn: async (id: string) => {
+      if (mode === "online" && client) return withSync(deleteAttachment(client, id));
+      return false;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attachments", mode] });
+    },
+  });
+
   const mAddTrip = useMutation({
     mutationFn: async (trip: Omit<Trip, "id" | "user_id" | "created_at" | "updated_at" | "is_active">) => {
       let result: Trip | null = null;
@@ -526,6 +590,12 @@ export function useMutations() {
     },
     onSuccess: () => {
       invalidateAllTrips(qc, mode);
+      // Activar un trip impacta también los datasets derivados que dependen
+      // del trip activo. Sin invalidar acá, dashboard/commandCenter quedan
+      // pegados al trip anterior hasta el próximo focus event.
+      qc.invalidateQueries({ queryKey: ["activeTrip"] });
+      qc.invalidateQueries({ queryKey: ["commandCenter"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
@@ -609,6 +679,9 @@ export function useMutations() {
         tripId: string,
         rows: Array<{ category: string; label: string; budgeted_amount: number; order_index: number }>,
       ) => mSaveBudget.mutateAsync({ tripId, rows }),
+      addAttachment: (a: Omit<Attachment, "id" | "created_at" | "updated_at">) =>
+        mAddAttachment.mutateAsync(a),
+      deleteAttachment: (id: string) => mDeleteAttachment.mutateAsync(id),
     }),
     // Las mutations son ref-stable durante el lifecycle del hook (useMutation
     // hooks devuelven la misma fn ref entre renders); este memo + las refs

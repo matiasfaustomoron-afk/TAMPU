@@ -190,6 +190,15 @@ async function callAnthropicRich(key: string, opts: LLMCallOpts): Promise<LLMCal
         err.status = 401;
         throw err;
       }
+      // 429 / 5xx → transient, throwear con status para que `withRetry` haga
+      // backoff exponencial. Antes devolvíamos null acá y `withRetry` lo
+      // trataba como "no data" y NO reintentaba — significaba que un single
+      // hiccup en Anthropic rompía la respuesta entera.
+      if (res.status === 429 || res.status >= 500) {
+        const err = new Error(`anthropic_${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
       return null;
     }
     const json = await res.json() as {
@@ -208,8 +217,10 @@ async function callAnthropicRich(key: string, opts: LLMCallOpts): Promise<LLMCal
       provider: "anthropic",
     };
   } catch (e: unknown) {
-    // Re-throw 401 para que withRetry no reintente
-    if ((e as { status?: number })?.status === 401) throw e;
+    // Re-throw 401 + transient para que withRetry los maneje.
+    const status = (e as { status?: number })?.status;
+    if (status === 401) throw e;
+    if (status && (status === 429 || status >= 500)) throw e;
     return null;
   }
 }
@@ -246,6 +257,12 @@ async function callGeminiRich(key: string, opts: LLMCallOpts): Promise<LLMCallRe
         err.status = 401;
         throw err;
       }
+      // 429 / 5xx → transient, throwear con status para `withRetry`.
+      if (res.status === 429 || res.status >= 500) {
+        const err = new Error(`gemini_${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
       return null;
     }
     const json = await res.json() as {
@@ -264,7 +281,9 @@ async function callGeminiRich(key: string, opts: LLMCallOpts): Promise<LLMCallRe
       provider: "gemini",
     };
   } catch (e: unknown) {
-    if ((e as { status?: number })?.status === 401) throw e;
+    const status = (e as { status?: number })?.status;
+    if (status === 401) throw e;
+    if (status && (status === 429 || status >= 500)) throw e;
     return null;
   }
 }

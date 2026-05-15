@@ -127,3 +127,6 @@ Verificación: tsc 0 errores, deploy Vercel OK, smoke test /welcome /login /api/
 Commits: `800263b` (18 fixes) + `01f3678` (force-dynamic intermedio) + `88acad4` (Suspense wrap).
 
 ---
+
+## Iteration 2 — 2026-05-15T13:02:29Z
+

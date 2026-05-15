@@ -9,6 +9,8 @@ import {
   deadlineText,
   voteLocalPoll,
   deleteLocalPoll,
+  castVoteOnline,
+  deletePollOnline,
   type Poll,
 } from "@/lib/polls/poll";
 import { useSupabase } from "@/lib/context/supabase-provider";
@@ -31,7 +33,7 @@ interface Props {
  *   - Cierre: si tu sos el creator, podés cerrar manualmente
  */
 export function PollCard({ poll, onChange }: Props) {
-  const { user } = useSupabase();
+  const { user, client, mode } = useSupabase();
   const userId = user?.id || "demo-user";
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Tú";
   const [now, setNow] = useState(() => Date.now());
@@ -48,8 +50,15 @@ export function PollCard({ poll, onChange }: Props) {
   const totalVotes = Object.keys(poll.votes).length;
   const myVote = poll.votes[userId];
 
-  const handleVote = useCallback((optionId: string) => {
-    const updated = voteLocalPoll(poll.trip_id, poll.id, userId, displayName, optionId);
+  const handleVote = useCallback(async (optionId: string) => {
+    let updated: Poll | null;
+    if (mode === "online" && client) {
+      updated = await castVoteOnline(client, poll.id, optionId, { id: userId, displayName });
+      // Fallback a local si online no respondió (tabla missing / network).
+      if (!updated) updated = voteLocalPoll(poll.trip_id, poll.id, userId, displayName, optionId);
+    } else {
+      updated = voteLocalPoll(poll.trip_id, poll.id, userId, displayName, optionId);
+    }
     haptic("light");
     if (updated) {
       onChange?.(updated);
@@ -62,14 +71,19 @@ export function PollCard({ poll, onChange }: Props) {
         href: null,
       });
     }
-  }, [poll, userId, displayName, onChange]);
+  }, [poll, userId, displayName, onChange, mode, client]);
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (!confirm(`¿Eliminar el poll "${poll.question}"?`)) return;
-    deleteLocalPoll(poll.trip_id, poll.id);
+    if (mode === "online" && client) {
+      const ok = await deletePollOnline(client, poll.id);
+      if (!ok) deleteLocalPoll(poll.trip_id, poll.id);
+    } else {
+      deleteLocalPoll(poll.trip_id, poll.id);
+    }
     onChange?.(null);
     toast("Poll eliminado", "info");
-  }, [poll, onChange]);
+  }, [poll, onChange, mode, client]);
 
   const canDelete = poll.created_by === userId;
 

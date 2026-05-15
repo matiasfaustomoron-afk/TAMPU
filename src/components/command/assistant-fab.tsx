@@ -21,12 +21,12 @@ import { haptic } from "@/lib/native/platform";
  * Tab bar = 64px de alto + safe-area-inset-bottom.
  * Reglas iOS HIG: no solapar con tab bar, dejar 24px de gap.
  *
- *   AssistantFab  bottom = safe-area + 88px   (24px arriba del top del tab-bar) → abajo
- *   MoreFab       bottom = safe-area + 152px  (88 + 56 alto FAB + 8 gap)        → medio
- *   ExpenseFab    bottom = safe-area + 216px  (152 + 56 alto FAB + 8 gap)       → arriba
+ *   AssistantFab  bottom = safe-area + var(--fab-stack-1)  (88px default)  → abajo
+ *   MoreFab       bottom = safe-area + var(--fab-stack-2)  (152px default) → medio
+ *   ExpenseFab    bottom = safe-area + var(--fab-stack-3)  (216px default) → arriba
  *
- * En iPhone SE (max-height: 700px) escondemos MoreFab para evitar overlap con
- * el viewport más chico — el user puede tocar tab "Más" / link directo a /more.
+ * Las CSS vars viven en globals.css y se sobrescriben a 80/140/200 en viewports
+ * cortos (max-height: 740px ~ iPhone SE / 13 mini landscape / keyboard abierto).
  */
 const HIDDEN_ROUTES = ["/assistant", "/welcome", "/login", "/onboarding"];
 
@@ -43,7 +43,7 @@ export function AssistantFab() {
       aria-label="Abrir asistente"
       title="Asistente IA"
       className="fixed z-40 right-4 w-14 h-14 rounded-2xl text-white shadow-[0_8px_24px_rgba(48,26,13,0.22),0_0_0_1px_rgba(255,255,255,0.10)_inset] tampu-gradient-warm hover:scale-105 hover:shadow-[0_12px_32px_rgba(48,26,13,0.28)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-      style={{ bottom: "calc(88px + env(safe-area-inset-bottom))" }}
+      style={{ bottom: "calc(var(--fab-stack-1) + env(safe-area-inset-bottom))" }}
     >
       <Sparkles className="w-6 h-6" aria-hidden="true" strokeWidth={2.2} />
     </Link>

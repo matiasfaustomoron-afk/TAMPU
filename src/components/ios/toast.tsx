@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Check, AlertTriangle, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { useI18n } from "@/i18n/provider";
 
 type ToastKind = "success" | "warn" | "info" | "error";
 
@@ -23,6 +24,7 @@ export function toast(message: string, kind: ToastKind = "success") {
 
 // ─── Mounted at app root to render the queue ───
 export function ToastHost() {
+  const { t: dict } = useI18n();
   const [items, setItems] = useState<ToastItem[]>([]);
 
   const dismiss = useCallback((id: string) => {
@@ -81,7 +83,7 @@ export function ToastHost() {
             <button
               onClick={() => dismiss(t.id)}
               className="pressable opacity-80 hover:opacity-100 shrink-0 w-11 h-11 -my-2 -mr-1 flex items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              aria-label="Cerrar aviso"
+              aria-label={dict.common.close}
             >
               <X className="w-4 h-4" aria-hidden />
             </button>

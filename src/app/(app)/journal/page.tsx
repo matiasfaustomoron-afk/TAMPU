@@ -16,6 +16,7 @@ import { toast } from "@/components/ios/toast";
 import { readVersioned, writeVersioned } from "@/lib/storage/version";
 import { toggleLikeRemote, insertCommentRemote, deleteCommentRemote } from "@/lib/journal/sync";
 import { HintCard } from "@/components/ios/hint-card";
+import { PrintBookSheet } from "@/components/journal/PrintBookSheet";
 import {
   Camera, Plus, BookOpen, Trash2, MapPin, X, Heart, MessageCircle,
   Plane, Utensils, Send, ChevronLeft, ChevronRight,
@@ -142,6 +143,7 @@ export default function JournalPage() {
   const [newCategory, setNewCategory] = useState<EntryCategory>("trip");
   const [commentDraft, setCommentDraft] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { isNative().then(setNativeAvail); }, []);
@@ -358,6 +360,18 @@ export default function JournalPage() {
         eyebrow={`${entries.length} ${entries.length === 1 ? "publicación" : "publicaciones"}${stats.places > 0 ? ` · ${stats.places} ${stats.places === 1 ? "lugar" : "lugares"}` : ""}`}
         title="Diario"
         serif
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPrintOpen(true)}
+            className="gap-1.5"
+            aria-label="Pedir libro físico del viaje"
+          >
+            <BookOpen className="w-4 h-4" />
+            Pedir libro
+          </Button>
+        }
       />
 
       {/* ─── Filter tabs ─── */}
@@ -706,6 +720,14 @@ export default function JournalPage() {
           </div>
         )}
       </Sheet>
+
+      {/* Print book sheet — wire to /api/print-book */}
+      <PrintBookSheet
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        tripId={trip.id}
+        tripName={trip.name}
+      />
     </div>
   );
 }

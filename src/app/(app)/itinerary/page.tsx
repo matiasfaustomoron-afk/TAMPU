@@ -173,6 +173,9 @@ export default function ItineraryPage() {
                   hotels: (reservations || []).filter(r => r.type === "accommodation").map(r => ({
                     desc: r.description, provider: r.provider, in: r.use_date, out: r.use_end_date,
                   })),
+                  // TTL de 30 días — más allá, /share rechaza el link. Si el
+                  // owner quiere extender, regenera el link. Unix seconds.
+                  exp: Math.floor(Date.now() / 1000) + 30 * 24 * 3600,
                 };
                 const b64 = typeof window !== "undefined" ? btoa(unescape(encodeURIComponent(JSON.stringify(payload)))) : "";
                 const url = `${window.location.origin}/share?d=${encodeURIComponent(b64)}`;

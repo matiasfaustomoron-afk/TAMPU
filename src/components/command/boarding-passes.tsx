@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { useActiveTrip, useReservations } from "@/lib/hooks/use-trip-data";
-import { useSupabase } from "@/lib/context/supabase-provider";
+import { useActiveTrip, useReservations, useAttachments } from "@/lib/hooks/use-trip-data";
 import { Plane, ChevronDown, ChevronUp, FileText, Paperclip } from "lucide-react";
 import type { Attachment, Reservation } from "@/lib/types/database";
 import { attachmentsForReservation } from "@/lib/domain/attachment-linker";
@@ -27,27 +26,14 @@ function daysUntilIso(iso: string | null | undefined): number {
 }
 
 export function BoardingPassesWidget() {
-  const { client, mode } = useSupabase();
   const { data: trip } = useActiveTrip();
   const { data: reservations } = useReservations(trip?.id);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Antes: fetch directo a Supabase + parse manual de localStorage. Ahora una
+  // sola línea via TanStack — el hook resuelve online/demo y se refresca cuando
+  // mAddAttachment invalida la query.
+  const { data: attachmentsRaw } = useAttachments(trip?.id);
+  const attachments = useMemo<Attachment[]>(() => attachmentsRaw ?? [], [attachmentsRaw]);
   const [open, setOpen] = useState(true);
-
-  useEffect(() => {
-    if (!trip) return;
-    let cancelled = false;
-    if (mode === "online" && client) {
-      client.from("attachments").select("*").eq("trip_id", trip.id).eq("category", "boarding_pass")
-        .then(({ data }) => { if (!cancelled) setAttachments(data ?? []); });
-    } else {
-      try {
-        const raw = localStorage.getItem(`travel-os-vault-${trip.id}`);
-        const parsed = raw ? JSON.parse(raw) as Attachment[] : [];
-        queueMicrotask(() => { if (!cancelled) setAttachments(parsed); });
-      } catch { /* empty */ }
-    }
-    return () => { cancelled = true; };
-  }, [trip, mode, client]);
 
   const items = useMemo<BoardingItem[]>(() => {
     if (!reservations) return [];

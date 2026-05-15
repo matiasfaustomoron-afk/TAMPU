@@ -20,16 +20,24 @@
 // tarjeta) solo arruinan la respuesta del LLM, no exfiltran data.
 
 const PATTERNS = [
-  // Tarjeta de crédito: 4-4-4-4 con espacios/guiones, o 13-16 dígitos seguidos.
-  // El regex viejo (\b(?:\d[ -]*?){13,16}\b) matcheaba mal en strings con
-  // separadores intermedios. Este formato cubre los layouts típicos.
-  { regex: /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b|\b\d{13,16}\b/g, replacement: "[CARD]" },
+  // Tarjeta de crédito — formato con separators (4-4-4-4) SIEMPRE matchea.
+  // Cubre "1234 5678 9012 3456" o "1234-5678-9012-3456".
+  { regex: /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/g, replacement: "[CARD]" },
+  // Tarjeta de crédito sin separators — REQUIERE label precedente (card,
+  // tarjeta, visa, mastercard, amex, credit, debito, debit) para no
+  // over-maskear order IDs largos / totals / IATA timestamps que también
+  // tienen 13-16 dígitos. Antes el regex `\b\d{13,16}\b` matcheaba cualquier
+  // número largo y rompía la extracción de "Reserva 1234567890123".
+  { regex: /(?<=\b(?:card|tarjeta|visa|mastercard|amex|credit|cr[eé]dito|debito|d[eé]bito|debit)\b[\s:#]*)\d{13,16}\b/gi, replacement: "[CARD]" },
   // CVV — solo cuando viene precedido del label.
   { regex: /CVV[:\s]*\d{3,4}/gi, replacement: "CVV: [CVV]" },
-  // DNI argentino — 7-8 dígitos con label.
-  { regex: /\bDNI[:\s]*\d{7,8}\b/gi, replacement: "DNI: [DNI]" },
-  // CUIT argentino — formato XX-XXXXXXXX-X.
-  { regex: /\b\d{2}-\d{8}-\d\b/g, replacement: "[CUIT]" },
+  // DNI argentino — con label, formato con puntos opcionales (35.123.456) o sin (35123456).
+  { regex: /\bDNI\s*[Nn]?[°º]?[:\s]*\d{1,3}\.?\d{3}\.?\d{3,4}\b/g, replacement: "DNI: [DNI]" },
+  // CUIT argentino — formato XX-XXXXXXXX-X con prefijos válidos AFIP
+  // (20, 23, 24, 27 = personas físicas; 30, 33, 34 = personas jurídicas).
+  // Antes el regex aceptaba cualquier prefijo de 2 dígitos, lo que enmascaraba
+  // números aleatorios con shape similar (ej. "99-12345678-9").
+  { regex: /\b(?:20|23|24|27|30|33|34)-\d{8}-\d\b/g, replacement: "[CUIT]" },
   // Pasaporte / DNI extranjero — exige label precedente (passport, pasaporte,
   // documento, etc) para no over-maskear PNRs/locators de booking que tienen
   // shape similar (ABC123456). El patrón sin label rompía la extracción de

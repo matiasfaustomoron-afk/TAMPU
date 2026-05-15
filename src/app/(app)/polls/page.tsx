@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Vote, Sparkles } from "lucide-react";
 import { LargeTitle, Pill } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
+import { Button } from "@/components/ui/button";
 import { PollCard } from "@/components/polls/poll-card";
 import { CreatePoll } from "@/components/polls/create-poll";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
@@ -143,9 +145,10 @@ export default function PollsPage() {
         <LargeTitle title={t.polls.title} eyebrow={t.polls.subtitle} serif />
         <div className="px-4">
           <EmptyState
-            title="Sin viaje activo"
+            title={t.common.noActiveTrip}
             description="Activá un viaje en /trips para crear y votar encuestas."
             icon={<Vote className="w-8 h-8" />}
+            action={<Link href="/trips"><Button>Crear o elegir viaje</Button></Link>}
           />
         </div>
       </div>

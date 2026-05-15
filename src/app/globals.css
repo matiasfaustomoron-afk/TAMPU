@@ -79,6 +79,18 @@
   --icon-lg: 24px;
   --icon-xl: 32px;
 
+  /* ─── FAB stacking tokens — UNA fuente de verdad para el stack vertical ───
+     Reemplaza los 88/152/216 hardcoded inline en assistant-fab/more-fab/expense-fab.
+     Calculados desde el tab bar (64px) + gap iOS (24px) + cada FAB suma 56+8.
+     `--fab-stack-1`: bottom del AssistantFab (más cercano al tab bar).
+     `--fab-stack-2`: bottom del MoreFab (encima del Assistant).
+     `--fab-stack-3`: bottom del ExpenseFab (top del stack, solo en /expenses).
+     En viewport corto (max-height: 740px ~= iPhone SE landscape, iPhone 13 mini)
+     comprimimos el stack para no comer pantalla. */
+  --fab-stack-1: 88px;
+  --fab-stack-2: 152px;
+  --fab-stack-3: 216px;
+
   /* ─── Font-size scale tokens — UNA escala canónica.
      Reemplaza el zoo de `text-[Xpx]` ad-hoc por una escala discreta de 10
      pasos. Cada paso "suena" iOS (Apple type ramp) y mantiene line-height
@@ -1006,6 +1018,19 @@ h1, h2, h3 { letter-spacing: -0.025em; }
  * que ocultar accesos críticos. */
 @media (max-height: 0px) {
   .more-fab { display: none !important; }
+}
+
+/* ─── FAB stacking — viewport corto ───
+ * iPhone SE (667px) / iPhone 13 mini landscape / dispositivos con keyboard
+ * abierto comen demasiada pantalla con 3 FABs a 88/152/216. Comprimimos el
+ * stack 10% para mantenerlo cómodo. Los componentes leen estas vars vía
+ * `var(--fab-stack-1)` etc., así que el override aplica sin cambiar JSX. */
+@media (max-height: 740px) {
+  :root {
+    --fab-stack-1: 80px;
+    --fab-stack-2: 140px;
+    --fab-stack-3: 200px;
+  }
 }
 
 /* ─── A11y AAA — prefers-reduced-transparency ───

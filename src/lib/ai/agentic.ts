@@ -367,12 +367,26 @@ async function executeAnthropicCall(
           err.status = 401;
           throw err;
         }
+        // 429 / 5xx — transient, dejá que withRetry haga su trabajo. Antes
+        // devolvíamos null acá y eso cortaba el retry path (withRetry trata
+        // null como "no data, no retry"). Ahora throwamos con status para
+        // que withRetry haga backoff exponencial.
+        if (res.status === 429 || res.status >= 500) {
+          const body = await res.text().catch(() => "");
+          console.warn("[agentic] anthropic transient:", res.status, body);
+          const err = new Error(`anthropic_${res.status}`) as Error & { status: number };
+          err.status = res.status;
+          throw err;
+        }
         console.warn("[agentic] anthropic call failed:", res.status, await res.text().catch(() => ""));
         return null;
       }
       return (await res.json()) as AnthropicResponse;
     } catch (err) {
-      if ((err as { status?: number })?.status === 401) throw err;
+      const status = (err as { status?: number })?.status;
+      // 401 + transient (429/5xx) → rethrow para que withRetry los maneje.
+      if (status === 401) throw err;
+      if (status && (status === 429 || status >= 500)) throw err;
       console.warn("[agentic] anthropic exception:", err);
       return null;
     }
@@ -399,6 +413,16 @@ export async function runAgenticAssistant(
   const usage = { inputTokens: 0, outputTokens: 0 };
   const MODEL = "claude-sonnet-4-5";
 
+  // ─── LOOP GUARDS (iter 2 hardening) ─────────────────────────────────────
+  // Defensa en profundidad encima del `iter < 4` ya existente:
+  //   - BUDGET: si los tokens acumulados pasan 50k, cortamos. Un user con vault
+  //     enorme + tools recurrentes podría blow up el costo sin esto.
+  //   - TIMEOUT: 60s wall-clock max para el loop entero (cada call ya tiene
+  //     timeout individual de 25s, pero 4 iteraciones + retries pueden sumar).
+  const loopStart = Date.now();
+  const LOOP_BUDGET_TOKENS = 50_000;
+  const LOOP_TIMEOUT_MS = 60_000;
+
   for (let iter = 0; iter < 4; iter++) {
     const response = await executeAnthropicCall(key, messages);
     if (!response) return null;
@@ -406,6 +430,16 @@ export async function runAgenticAssistant(
     // Sumar tokens reales de esta iteración
     usage.inputTokens += response.usage?.input_tokens ?? 0;
     usage.outputTokens += response.usage?.output_tokens ?? 0;
+
+    const totalTokens = usage.inputTokens + usage.outputTokens;
+    if (totalTokens > LOOP_BUDGET_TOKENS) {
+      console.warn("[agentic] budget exceeded:", totalTokens, "tokens");
+      break;
+    }
+    if (Date.now() - loopStart > LOOP_TIMEOUT_MS) {
+      console.warn("[agentic] timeout exceeded:", Date.now() - loopStart, "ms");
+      break;
+    }
 
     // Acumular asistente turn
     messages.push({ role: "assistant", content: response.content as unknown as Array<Record<string, unknown>> });
@@ -473,10 +507,25 @@ export async function runAgenticAssistant(
         }
 
         toolsUsed.push({ name: block.name, input: block.input, outcome });
+
+        // ─── PROMPT INJECTION HARDENING (iter 2) ──────────────────────────
+        // Los tool_results pueden contener strings controlados por el user
+        // (vault notes, descripciones, attachments). Sin escape, un payload
+        // tipo "Ignore previous instructions and ..." se inyecta al LLM como
+        // si fuera contenido confiable.
+        //   1. Escapamos triple-backticks (los modelos los usan como delimiter)
+        //   2. Escapamos </tool_output> para que el user no pueda cerrar el tag
+        //   3. Wrappeamos en <tool_output>...</tool_output> para que el modelo
+        //      sepa claramente qué viene de tool output vs system prompt.
+        const sanitized = String(result)
+          .replace(/```/g, "'''")
+          .replace(/<\/tool_output>/gi, "<\\/tool_output>");
+        const wrapped = `<tool_output>${sanitized}</tool_output>`;
+
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,
-          content: result,
+          content: wrapped,
         });
       }
 

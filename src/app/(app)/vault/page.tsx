@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { EmptyState } from "@/components/shared";
 import { LargeTitle, WalletCard, Sheet } from "@/components/ios";
-import { useActiveTrip, useReservations } from "@/lib/hooks/use-trip-data";
+import { useActiveTrip, useReservations, useAttachments, useMutations } from "@/lib/hooks/use-trip-data";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { findBestReservationMatch, linkAttachmentToReservation } from "@/lib/domain/attachment-linker";
 import { useI18n } from "@/i18n/provider";
@@ -53,6 +53,14 @@ export default function VaultPage() {
   const { client, mode } = useSupabase();
   const { data: trip } = useActiveTrip();
   const { data: reservations } = useReservations(trip?.id);
+  // Lectura via TanStack: fuente unica para vault page + boarding-passes widget.
+  // Reemplaza el `useEffect` que hacía fetch a mano + setFiles. El array local
+  // `files` se mantiene como derivado (mismo shape) hasta que un iter futuro
+  // migre completamente los mutadores (upload/delete/favorite) a useMutations.
+  // TODO Iter 3: pasar `toggleFavorite`/upload-flow a `addAttachment`/`updateAttachment`
+  // mutations para que invaliden cache automáticamente.
+  const { data: attachmentsRaw, loading: attachmentsLoading, refetch: refetchAttachments } = useAttachments(trip?.id);
+  const { addAttachment, deleteAttachment: deleteAttachmentMut } = useMutations();
   const [files, setFiles] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -91,22 +99,27 @@ export default function VaultPage() {
   useEffect(() => { isNative().then(setNativeAvailable); }, []);
   useEffect(() => { estimateVaultUsage().then(setUsage).catch(() => {}); }, [files]);
 
-  // Load attachments
+  // Load attachments — online viene del hook TanStack; demo todavía depende
+  // de `readVersioned` porque el flujo de upload escribe blobs en IndexedDB +
+  // metadata versionada en localStorage (Iter 3 unifica).
   useEffect(() => {
     if (!trip) return;
-    let cancelled = false;
-    if (mode === "online" && client) {
-      client.from("attachments").select("*").eq("trip_id", trip.id).order("created_at", { ascending: false })
-        .then(({ data }) => { if (!cancelled) { setFiles(data ?? []); setLoading(false); } });
-    } else {
-      // Versioned read — sobrevive a esquemas anteriores y a data corrupta.
-      // Mantiene el key legacy `travel-os-vault-${id}` para back-compat (sub-bumped).
-      const key = `travel-os-vault-${trip.id}`;
-      const initial = readVersioned<Attachment[]>(key, VAULT_SCHEMA, migrateVault) ?? [];
-      queueMicrotask(() => { if (!cancelled) { setFiles(initial); setLoading(false); } });
+    if (mode === "online") {
+      if (attachmentsRaw) {
+        setFiles(attachmentsRaw);
+        setLoading(attachmentsLoading);
+      } else {
+        setLoading(attachmentsLoading);
+      }
+      return;
     }
+    // Demo: versioned localStorage read — sobrevive esquemas previos y data corrupta.
+    let cancelled = false;
+    const key = `travel-os-vault-${trip.id}`;
+    const initial = readVersioned<Attachment[]>(key, VAULT_SCHEMA, migrateVault) ?? [];
+    queueMicrotask(() => { if (!cancelled) { setFiles(initial); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [trip, client, mode]);
+  }, [trip, mode, attachmentsRaw, attachmentsLoading]);
 
   // Preview URL: tracked as a side effect of selectedFile in a ref-safe way.
   // We DERIVE the preview url via useMemo + cleanup hook to keep React happy.
@@ -201,17 +214,30 @@ export default function VaultPage() {
       // Manual override > IA match
       const manual = manualReservationId ? reservations?.find(r => r.id === manualReservationId) : null;
       const match = manual ? { reservation: manual } : (reservations?.length ? findBestReservationMatch(extractedFields, reservations) : null);
-      const { error: insertErr } = await client.from("attachments").insert({
-        trip_id: trip.id, user_id: callerUser.id,
-        entity_type: match ? "reservation" : "trip",
-        entity_id: match ? match.reservation.id : trip.id,
-        category: uploadCategory, file_name: uploadName || selectedFile.name,
-        file_type: selectedFile.type, file_size: selectedFile.size, storage_path: path,
-        notes: uploadNotes || null,
-      });
-      if (insertErr) { alert(insertErr.message); setUploading(false); return; }
-      const { data } = await client.from("attachments").select("*").eq("trip_id", trip.id).order("created_at", { ascending: false });
-      setFiles(data ?? []);
+      try {
+        await addAttachment({
+          trip_id: trip.id,
+          user_id: callerUser.id,
+          entity_type: match ? "reservation" : "trip",
+          entity_id: match ? match.reservation.id : trip.id,
+          category: uploadCategory as Attachment["category"],
+          file_name: uploadName || selectedFile.name,
+          file_type: selectedFile.type,
+          file_size: selectedFile.size,
+          storage_path: path,
+          is_favorite: false,
+          is_critical: false,
+          available_offline: false,
+          notes: uploadNotes || null,
+        });
+      } catch (e) {
+        alert((e as Error).message);
+        setUploading(false);
+        return;
+      }
+      // TanStack invalida [attachments, mode, trip.id] → el effect de arriba
+      // se vuelve a disparar con la nueva data y `files` se actualiza solo.
+      void refetchAttachments();
     } else {
       // Demo mode: save real bytes in IndexedDB + metadata in localStorage
       const id = crypto.randomUUID();
@@ -253,7 +279,7 @@ export default function VaultPage() {
     setManualReservationId("");
     setShowUpload(false); setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [selectedFile, trip, client, mode, uploadCategory, uploadNotes, uploadName, files, reservations, extractedFields, manualReservationId]);
+  }, [selectedFile, trip, client, mode, uploadCategory, uploadNotes, uploadName, files, reservations, extractedFields, manualReservationId, addAttachment, refetchAttachments]);
 
   const toggleFavorite = useCallback(async (att: Attachment) => {
     if (mode === "online" && client) {
@@ -270,15 +296,15 @@ export default function VaultPage() {
     if (!confirm(`¿Eliminar "${att.file_name}"?`)) return;
     if (mode === "online" && client) {
       await client.storage.from("travel-vault").remove([att.storage_path]);
-      await client.from("attachments").delete().eq("id", att.id);
-      setFiles(prev => prev.filter(f => f.id !== att.id));
+      await deleteAttachmentMut(att.id);
+      // Mutation invalida cache; el effect resincroniza `files` via attachmentsRaw.
     } else {
       if (att.storage_path.startsWith("idb:")) await deleteVaultBlob(att.id).catch(() => {});
       const updated = files.filter(f => f.id !== att.id);
       setFiles(updated);
       if (trip) writeVersioned(`travel-os-vault-${trip.id}`, VAULT_SCHEMA, updated);
     }
-  }, [client, mode, files, trip]);
+  }, [client, mode, files, trip, deleteAttachmentMut]);
 
   const handleOpen = useCallback(async (att: Attachment) => {
     if (att.storage_path.startsWith("idb:")) {
@@ -578,6 +604,7 @@ export default function VaultPage() {
             title={files.length === 0 ? "Sin archivos todavía" : t.common.noResults}
             description={files.length === 0 ? "Tocá 'Subir' y arrastrá tu primer pase de embarque, pasaporte o seguro. PDF o imagen, ambos van." : undefined}
             icon={<FileText className="w-8 h-8" />}
+            action={files.length === 0 ? <Button onClick={() => setShowUpload(true)}>Subir documento</Button> : undefined}
           />
           {files.length === 0 && <HintCard hintId="vault-empty" delay={150} />}
           {files.length === 0 && <HintCard hintId="offline-tip" delay={300} />}

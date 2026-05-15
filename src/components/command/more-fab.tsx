@@ -42,7 +42,7 @@ export function MoreFab() {
       aria-label="Más opciones"
       title="Más"
       className="more-fab fixed z-40 right-4 w-14 h-14 rounded-2xl shadow-[0_8px_24px_rgba(48,26,13,0.18),0_0_0_1px_rgba(48,26,13,0.05)_inset] bg-card hover:scale-105 hover:shadow-[0_12px_32px_rgba(48,26,13,0.22)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary border border-border/60"
-      style={{ bottom: "calc(152px + env(safe-area-inset-bottom))" }}
+      style={{ bottom: "calc(var(--fab-stack-2) + env(safe-area-inset-bottom))" }}
     >
       <MoreHorizontal className="w-6 h-6 text-foreground" aria-hidden="true" strokeWidth={2.2} />
     </Link>

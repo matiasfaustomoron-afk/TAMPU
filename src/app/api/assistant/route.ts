@@ -3,6 +3,25 @@ import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { runAgenticAssistant, type AgenticContext } from "@/lib/ai/agentic";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { captureException } from "@/lib/observability/sentry";
+import { createSupabaseServer } from "@/lib/supabase/server";
+
+// Identifier per-user para `recordProxyCall`. Antes usábamos la constante
+// "byok:assistant" / "fallback:assistant" — eso impedía rate-limit individual
+// (todos los users compartían el mismo bucket). Ahora intentamos pegar el
+// userId de la sesión; si no hay sesión válida, fallback al identifier viejo.
+async function getProxyIdentifier(suffix: string, fallback: "byok" | "fallback"): Promise<string> {
+  try {
+    const sb = await createSupabaseServer();
+    if (sb) {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.id) return `${fallback}:user:${user.id}:${suffix}`;
+    }
+  } catch (e) {
+    // No sesión disponible (anon request, cookies vacías, etc) — usá fallback.
+    console.warn("[assistant] proxy identifier user lookup failed:", e);
+  }
+  return `${fallback}:${suffix}`;
+}
 
 // ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
 // Hard cap server-side. El cliente NO puede pedir más.
@@ -334,7 +353,8 @@ async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, questio
   // Log usage REAL del provider (no worst-case)
   const tokensIn = rich.usage.inputTokens;
   const tokensOut = rich.usage.outputTokens;
-  void recordProxyCall(source === "byok" ? "byok:assistant" : "fallback:assistant", {
+  const identifier = await getProxyIdentifier("assistant", source === "byok" ? "byok" : "fallback");
+  void recordProxyCall(identifier, {
     endpoint: "/api/assistant",
     tokensIn,
     tokensOut,
@@ -395,7 +415,8 @@ export async function POST(req: NextRequest) {
       // Record usage REAL del agentic loop (multi-turn).
       const tokensIn = agentic.usage.inputTokens;
       const tokensOut = agentic.usage.outputTokens;
-      void recordProxyCall(keySource === "byok" ? "byok:assistant" : "fallback:assistant", {
+      const identifier = await getProxyIdentifier("assistant", keySource === "byok" ? "byok" : "fallback");
+      void recordProxyCall(identifier, {
         endpoint: "/api/assistant",
         tokensIn,
         tokensOut,

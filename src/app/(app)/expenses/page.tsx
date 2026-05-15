@@ -402,6 +402,7 @@ export default function ExpensesPage() {
             title="Sin gastos cargados"
             description="Tocá + para agregar el primero. Se guarda al instante."
             icon={<Receipt className="w-8 h-8" />}
+            action={<Button onClick={() => setSheetOpen(true)}>Agregar gasto</Button>}
           />
         </div>
       ) : (

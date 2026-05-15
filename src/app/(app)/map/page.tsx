@@ -1,7 +1,9 @@
 "use client";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SectionHeader, EmptyState, Semaphore } from "@/components/shared";
 import { useActiveTrip, useCities, useReservations, useTripDays } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
@@ -42,7 +44,7 @@ export default function MapPage() {
 
   if (lc) return <div className="animate-pulse h-[480px] bg-muted rounded-lg" />;
   if (!trip || !cities || cities.length === 0) {
-    return <EmptyState title="No hay ciudades cargadas" icon={<MapPin className="w-8 h-8" />} />;
+    return <EmptyState title="No hay ciudades cargadas" icon={<MapPin className="w-8 h-8" />} action={<Link href="/itinerary"><Button>Cargar ciudades</Button></Link>} />;
   }
 
   return (
