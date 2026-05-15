@@ -1,34 +1,54 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { LargeTitle, IOSSection, IOSRow, Pill } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
-import { useDynamicAlerts } from "@/lib/hooks/use-trip-data";
+import { useDynamicAlerts, useActiveTrip } from "@/lib/hooks/use-trip-data";
+import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
 import { plural } from "@/lib/i18n/plural";
 import { toast } from "@/components/ios/toast";
 import { Bell, AlertTriangle, Info, CheckCircle2, Check } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { fetchDismissedSignatures, dismissAlertDB } from "@/lib/data/alerts";
 
 export default function AlertsPage() {
   const { t, locale, formatDate } = useI18n();
   const { data: alerts, loading } = useDynamicAlerts();
+  const { data: trip } = useActiveTrip();
+  const { client, mode } = useSupabase();
   const [filter, setFilter] = useState<"all" | "critical" | "warning" | "info">("all");
-  // ─── Dismissed in-memory set (iter 4 scope reducido) ──────────────────
-  // Las alertas son derivadas (useDynamicAlerts), no rows. El "dismiss" real
-  // se persiste en la tabla public.alert_dismissals (migración 00036). Iter 5
-  // wirea el POST + el filter contra esa tabla. Por ahora, sesión-only.
+  // ─── Dismissed signatures: persistidas en alert_dismissals (migración 00036) ──
+  // Las alertas son derivadas (useDynamicAlerts), no rows. El "dismiss" persiste
+  // por alert_signature (typicamente el id derivado de la alerta). En demo mode
+  // o sin sesión, mantenemos solo in-memory.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
+  // Hidratar el set desde DB al montar / cuando cambie el trip activo.
+  useEffect(() => {
+    if (mode !== "online" || !client || !trip?.id) return;
+    let alive = true;
+    fetchDismissedSignatures(client, trip.id).then((set) => {
+      if (!alive) return;
+      setDismissed(set);
+    });
+    return () => { alive = false; };
+  }, [client, mode, trip?.id]);
+
   const dismissAlert = useCallback((id: string) => {
+    // Optimistic update — UI responde inmediato. Si DB falla, el state se
+    // mantiene (mejor UX que rollback ruidoso). En la próxima recarga el set
+    // se vuelve a hidratar desde DB y el item reaparecería si nunca persistió.
     setDismissed(prev => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
-    // TODO iter 5: POST alert_signature a /api/alert-dismissals + invalidar query
+    if (mode === "online" && client && trip?.id) {
+      void dismissAlertDB(client, trip.id, id);
+    }
     toast(t.common.acknowledge, "info");
-  }, [t]);
+  }, [t, client, mode, trip?.id]);
 
   const filtered = useMemo(() => {
     let r = alerts.filter(a => !dismissed.has(a.id));

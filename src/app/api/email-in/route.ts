@@ -238,11 +238,31 @@ async function handleSimpleJSON(
   body: SimpleInboundJSON,
   origin: string | null,
 ): Promise<NextResponse> {
-  // Auth opcional para llamadas server-to-server
+  // SECURITY: en producción exigimos `TAMPU_EMAIL_IN_SECRET` para evitar que
+  // el endpoint quede abierto sin auth. En dev/test sigue siendo opcional
+  // para no romper integraciones locales (Make/Zapier mock, fixtures).
   const optionalSecret = process.env.TAMPU_EMAIL_IN_SECRET;
+  const isProd = process.env.NODE_ENV === "production";
+  if (isProd && !optionalSecret) {
+    return withCors(
+      NextResponse.json(
+        { ok: false, error: "Configuration missing: TAMPU_EMAIL_IN_SECRET required in production" },
+        { status: 503 },
+      ),
+      origin,
+    );
+  }
   if (optionalSecret) {
-    const provided = req.headers.get("x-email-in-secret");
-    if (provided !== optionalSecret) {
+    // Aceptamos cualquiera de los dos headers para back-compat:
+    //   - `x-email-in-secret: <secret>` (legacy)
+    //   - `authorization: Bearer <secret>` (estándar)
+    const headerSecret = req.headers.get("x-email-in-secret");
+    const authHeader = req.headers.get("authorization");
+    const bearer = authHeader && authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : null;
+    const ok = headerSecret === optionalSecret || bearer === optionalSecret;
+    if (!ok) {
       return withCors(NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 }), origin);
     }
   }

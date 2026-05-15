@@ -234,11 +234,11 @@ Para activar `/api/cron/expiry-check`:
 
 ### 4. Revocar 4 tokens (P1 — seguridad)
 
-Estos tokens fueron compartidos durante la sesión y debe revocarse antes de exposición pública del repo:
-- **Vercel** `vcp_25VaIb...` → https://vercel.com/account/tokens
-- **GitHub PAT** `ghp_FIqo...` → https://github.com/settings/tokens
-- **Resend** `re_UitCC...` → https://resend.com/api-keys (rotar y enviar el nuevo por canal seguro)
-- **Supabase DB password** `HywEd...` → https://supabase.com/dashboard/project/cwlujkrfyucrifhintre/settings/database
+Cuatro credenciales fueron compartidas en la sesión y deben revocarse antes de exposición pública del repo (referirse al hilo del founder para los valores concretos):
+- **Vercel deploy token** → https://vercel.com/account/tokens
+- **GitHub Personal Access Token** → https://github.com/settings/tokens
+- **Resend API key** → https://resend.com/api-keys (rotar y enviar el nuevo por canal seguro)
+- **Supabase DB password** → https://supabase.com/dashboard/project/cwlujkrfyucrifhintre/settings/database
 
 ---
 

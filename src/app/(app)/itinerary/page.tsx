@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { useActiveTrip, useTripDays, useReservations, useMutations, useTasks } from "@/lib/hooks/use-trip-data";
+import { useConfirmSheet } from "@/lib/hooks/use-confirm-sheet";
 import { useI18n } from "@/i18n/provider";
 import { RESERVATION_STATUSES, CURRENCIES } from "@/lib/config/constants";
 import { toast } from "@/components/ios/toast";
@@ -123,7 +124,7 @@ export default function ItineraryPage() {
         title="Tu viaje"
         serif
         action={
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap gap-1.5 justify-end">
             <TripPresence tripId={trip.id} />
             <CollabIndicator tripId={trip.id} />
             <button
@@ -425,6 +426,7 @@ function ReservationGroup({
 }) {
   const { data: trip } = useActiveTrip();
   const { addReservation, updateReservation, deleteReservation } = useMutations();
+  const { confirm, sheet: confirmSheet } = useConfirmSheet();
   const [editTarget, setEditTarget] = useState<Reservation | null>(null);
   const [newOpen, setNewOpen] = useState(false);
 
@@ -551,12 +553,17 @@ function ReservationGroup({
 
   const removeItem = useCallback(async () => {
     if (!editTarget) return;
-    if (!confirm(`¿Eliminar "${editTarget.description}"?`)) return;
+    const ok = await confirm({
+      title: `¿Eliminar "${editTarget.description}"?`,
+      message: "Esta acción no se puede deshacer.",
+      destructive: true,
+    });
+    if (!ok) return;
     await deleteReservation({ id: editTarget.id, tripId: trip?.id });
     setEditTarget(null);
     toast("Eliminado", "info");
     onChanged();
-  }, [editTarget, deleteReservation, onChanged, trip?.id]);
+  }, [editTarget, deleteReservation, onChanged, trip?.id, confirm]);
 
   const sheetOpen = !!editTarget || newOpen;
   const closeSheet = () => { setEditTarget(null); setNewOpen(false); };
@@ -769,6 +776,7 @@ function ReservationGroup({
           )}
         </div>
       </Sheet>
+      {confirmSheet}
     </section>
   );
 }

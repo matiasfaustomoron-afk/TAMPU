@@ -13,6 +13,7 @@ import { BUDGET_CATEGORIES, CURRENCIES, PAYMENT_METHODS } from "@/lib/config/con
 import { encodeSplitToNotes, parseSplitFromNotes } from "@/lib/domain/split";
 import { convert } from "@/lib/currency-rates";
 import { toast } from "@/components/ios/toast";
+import { useConfirmSheet } from "@/lib/hooks/use-confirm-sheet";
 import { haptic } from "@/lib/native/platform";
 import { Receipt, Plus, Trash2, Users, Filter, PieChart as PieChartIcon, Target } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
@@ -62,6 +63,7 @@ export default function ExpensesPage() {
   const { data: budget } = useBudgetSummary();
   const { data: budgetCategories, refetch: refetchCategories } = useBudgetCategories(trip?.id);
   const { addExpense, deleteExpense, updateTrip, saveBudgetByCategories } = useMutations();
+  const { confirm, sheet: confirmSheet } = useConfirmSheet();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [budgetSheetOpen, setBudgetSheetOpen] = useState(false);
@@ -262,11 +264,16 @@ export default function ExpensesPage() {
   }, [amount, description, trip, date, category, paymentMethod, currency, addExpense, refetch, splitOn, splitPaidBy, splitWith, formatCurrency, resetCategorizer]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm("¿Eliminar este gasto?")) return;
+    const ok = await confirm({
+      title: "¿Eliminar este gasto?",
+      message: "Esta acción no se puede deshacer.",
+      destructive: true,
+    });
+    if (!ok) return;
     await deleteExpense({ id, tripId: trip?.id });
     toast("Gasto eliminado", "info");
     refetch();
-  }, [deleteExpense, refetch, trip?.id]);
+  }, [deleteExpense, refetch, trip?.id, confirm]);
 
   // ─── HOOKS ORDER: useCountUp DEBE llamarse SIEMPRE antes del early return ───
   // Previous bug: useCountUp estaba después del `if (loading) return` → cuando
@@ -649,6 +656,7 @@ export default function ExpensesPage() {
           El layout global ya monta el AssistantFab transversal. Acá agregamos el ExpenseFab
           contextual a esta página. */}
       <ExpenseFab />
+      {confirmSheet}
     </div>
   );
 }

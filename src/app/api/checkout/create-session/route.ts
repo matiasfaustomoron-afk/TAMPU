@@ -30,10 +30,14 @@ import {
   TAMPU_PLUS_PRODUCT_KEY,
 } from "@/lib/billing/stripe";
 import { captureException } from "@/lib/observability/sentry";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 interface CreateSessionBody {
+  // SECURITY: `user_id` se IGNORA si viene del body — siempre lo tomamos
+  // del session Supabase server-side. Mantenemos el campo en el shape por
+  // compat con clients existentes, pero NO se confía en él.
   user_id?: string;
   email?: string;
   locale?: string;
@@ -50,7 +54,45 @@ function resolveOrigin(req: NextRequest): string {
   return new URL(req.url).origin;
 }
 
+function isOriginAllowed(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  // Sin Origin header (curl, server-side fetch directo) → permitir, porque
+  // el browser siempre lo manda en cross-origin fetches y la auth Supabase
+  // ya nos cubre. Lo que estamos previniendo es CSRF cross-site.
+  if (!origin) return true;
+  const allowed = new Set<string>();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (siteUrl) allowed.add(siteUrl);
+  allowed.add("http://localhost:3000");
+  allowed.add("http://localhost:3001");
+  allowed.add("capacitor://localhost");
+  allowed.add("ionic://localhost");
+  // Vercel preview deploys
+  if (origin.endsWith(".vercel.app")) return true;
+  return allowed.has(origin.replace(/\/$/, ""));
+}
+
 export async function POST(req: NextRequest) {
+  // ─── Origin check (anti-CSRF) ───
+  if (!isOriginAllowed(req)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
+  // ─── Auth server-side ───
+  // Stripe metadata.user_id DEBE venir del session, no del body — un cliente
+  // hostil podría inyectar user_id arbitrario para asignar la compra a otra cuenta.
+  const sb = await createSupabaseServer();
+  if (!sb) {
+    return NextResponse.json(
+      { error: "auth_not_configured" },
+      { status: 503 },
+    );
+  }
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   let body: CreateSessionBody;
   try {
     body = (await req.json()) as CreateSessionBody;
@@ -101,18 +143,25 @@ export async function POST(req: NextRequest) {
         },
       ],
       // Si el client mandó email, pre-completamos. Si no, Stripe lo pide.
-      customer_email: body.email && /\S+@\S+\.\S+/.test(body.email) ? body.email : undefined,
+      // Preferimos el email del session sobre el del body — el body es untrusted.
+      customer_email: (() => {
+        const fromSession = user.email;
+        if (fromSession && /\S+@\S+\.\S+/.test(fromSession)) return fromSession;
+        if (body.email && /\S+@\S+\.\S+/.test(body.email)) return body.email;
+        return undefined;
+      })(),
 
       // Metadata: lo usa el webhook para backfill del user_id y trazabilidad.
+      // SECURITY: `user_id` viene del session Supabase, NO del body.
       metadata: {
         tampu_product: TAMPU_PLUS_PRODUCT_KEY,
-        user_id: body.user_id ?? "",
+        user_id: user.id,
         email_hint: body.email ?? "",
       },
       payment_intent_data: {
         metadata: {
           tampu_product: TAMPU_PLUS_PRODUCT_KEY,
-          user_id: body.user_id ?? "",
+          user_id: user.id,
         },
       },
 

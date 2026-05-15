@@ -80,6 +80,7 @@ export function AttachDocButton({
         storage_path: `idb:${id}`,
         is_favorite: false, is_critical: isCritical,
         available_offline: true, notes: null,
+        expires_at: null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
       const raw = localStorage.getItem(`travel-os-vault-${trip.id}`);

@@ -60,6 +60,8 @@ export interface Trip {
   budget_warning_threshold: number;
   budget_danger_threshold: number;
   is_active: boolean;
+  /** Iter 6 (migration 00038): habilita el endpoint público /api/recap/[id]. Default false. */
+  recap_public?: boolean;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -326,6 +328,8 @@ export interface Attachment {
   is_critical: boolean;
   available_offline: boolean;
   notes: string | null;
+  /** Fecha de vencimiento opcional (visa, pasaporte, seguro). ISO date. */
+  expires_at: string | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }

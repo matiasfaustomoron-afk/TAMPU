@@ -43,8 +43,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow static assets
-  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.includes(".")) {
+  // Allow static assets. La regex `\.[a-z0-9]{2,5}$` matchea archivos con
+  // extensión real al final del path (".css", ".png", ".woff2") en vez del
+  // `includes(".")` viejo, que también skipeaba paths tipo `/trip/v1.2/edit`
+  // (dot en el medio, sin ser file) — esos terminaban bypaseando la auth check.
+  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon") || /\.[a-z0-9]{2,5}$/i.test(pathname)) {
     return NextResponse.next();
   }
 

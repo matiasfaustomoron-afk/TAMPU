@@ -14,6 +14,15 @@ const inter = Inter({
   subsets: ["latin"],
   // 400 body / 500 medium / 600 semibold (UI emphasis) / 700 bold / 800 display
   // 800 sirve para tabular numbers grandes en heroes y deja que el serif lleve el headline.
+  //
+  // Perf audit (mayo 2026): contamos uso real de cada peso antes de droppar.
+  //   - font-medium (500): 134 ocurrencias en 50 archivos → KEEP.
+  //   - font-extrabold/800: usado en `.tampu-display` (countdown hero) → KEEP.
+  //   - 600/700: ubicuos en UI emphasis y body bold → KEEP.
+  //   - 400: body default → KEEP.
+  // Conclusión: todos los pesos cargados están justificados; no hay nada que
+  // dropear sin regresión visual. Next.js descarga sólo las variantes que el
+  // CSS realmente usa (subsetting); el costo marginal por weight extra es bajo.
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-sans",
   display: "swap",

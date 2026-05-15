@@ -13,7 +13,11 @@ import { createSupabaseService } from "@/lib/supabase/service";
  * TTL de cache: 30 días. Si el resolver falla y hay cache (aunque viejo), devolvemos el cache.
  */
 
-export const runtime = "nodejs";
+// Edge runtime: el resolver usa sólo `fetch` (Wikipedia REST, Unsplash, Supabase REST,
+// HEAD a /photos/...). No depende de `fs` ni libs Node-only (la lib sólo menciona
+// `fs.access` en un comentario histórico — la implementación real usa HEAD via fetch).
+// Beneficio: cold start ~10x más rápido + edge-region near user → menor TTFB.
+export const runtime = "edge";
 const CACHE_TTL_DAYS = 30;
 
 interface CachedRow {

@@ -10,7 +10,7 @@ import type { Attachment } from "@/lib/types/database";
 // y `useAttachments` en `use-trip-data.ts` cachea via TanStack.
 
 const ATTACHMENT_LIST_COLUMNS =
-  "id, trip_id, user_id, entity_type, entity_id, category, file_name, file_type, file_size, storage_path, is_favorite, is_critical, available_offline, notes, created_at, updated_at";
+  "id, trip_id, user_id, entity_type, entity_id, category, file_name, file_type, file_size, storage_path, is_favorite, is_critical, available_offline, notes, expires_at, created_at, updated_at";
 
 export async function fetchAttachments(db: SupabaseClient, tripId: string): Promise<Attachment[]> {
   const { data, error } = await db

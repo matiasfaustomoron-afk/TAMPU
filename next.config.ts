@@ -13,11 +13,30 @@ const nextConfig: NextConfig = {
   turbopack: { root: process.cwd() },
 
   // ─── Performance posture ───
-  // Tree-shaking explícito para imports de íconos: solo se incluye lo que usás.
-  // En Next 16 + Turbopack esto evita el "barrel import" que arrastra los ~1000
-  // glyphs de lucide-react al bundle inicial.
+  // Tree-shaking explícito para imports barrel ("barrel optimization"). Cada
+  // package listado acá se compila con import-paths granulares: en lugar de
+  // `import { X } from "lucide-react"` arrastrar el index entero, Next reescribe
+  // a un path interno específico. Reduce significativamente el JS inicial.
+  //
+  // Soportado en Next 16 (heredado de 15.x). Lista extendida (perf audit mayo 2026):
+  //   - lucide-react: ~1000 íconos, sólo usamos ~30.
+  //   - @radix-ui/react-icons: igual razonamiento.
+  //   - @radix-ui/react-dialog / popover / toast: cada uno expone múltiples sub-componentes,
+  //     barrel import trae todos.
+  //   - recharts: composable chart primitives + d3-internals, muy pesado sin tree-shake.
+  //   - @sentry/nextjs: barrel re-exporta browser + server + integrations.
+  //   - date-fns: cada función es un módulo, barrel los junta.
   experimental: {
-    optimizePackageImports: ["lucide-react", "@radix-ui/react-icons", "date-fns"],
+    optimizePackageImports: [
+      "lucide-react",
+      "@radix-ui/react-icons",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-toast",
+      "recharts",
+      "@sentry/nextjs",
+      "date-fns",
+    ],
   },
 
   // ─── External photo sources permitidas ───
@@ -47,6 +66,25 @@ const nextConfig: NextConfig = {
   ...(!isMobileBuild && {
     async headers() {
       return [
+        // ─── Security headers globales ───
+        // Aplicados a TODA respuesta. Defaults seguros sin CSP (CSP requiere
+        // audit dedicado para no romper inline scripts/styles del bundle Next).
+        {
+          source: "/(.*)",
+          headers: [
+            { key: "X-Frame-Options", value: "DENY" },
+            { key: "X-Content-Type-Options", value: "nosniff" },
+            { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+            {
+              key: "Strict-Transport-Security",
+              value: "max-age=63072000; includeSubDomains; preload",
+            },
+            {
+              key: "Permissions-Policy",
+              value: "camera=(self), microphone=(), geolocation=(self)",
+            },
+          ],
+        },
         {
           source: "/sw.js",
           headers: [

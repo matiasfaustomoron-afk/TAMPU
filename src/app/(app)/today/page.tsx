@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bed, Bus, AlertTriangle, Compass, Plus, Inbox } from "lucide-react";
@@ -10,7 +11,6 @@ import {
   useReservations,
   useDocuments,
 } from "@/lib/hooks/use-trip-data";
-import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
 import { plural } from "@/lib/i18n/plural";
 import { IOSFeatureCard, ProgressRing } from "@/components/ios";
@@ -20,9 +20,28 @@ import { DestinationPhoto } from "@/components/brand/destination-photo";
 import { GlyphCartera, GlyphDinero, GlyphEmergencia } from "@/components/brand/glyphs";
 import { QuickStatsCard } from "@/components/dashboard/QuickStatsCard";
 import { RecapShareButton } from "@/components/share/RecapShareButton";
-import { AnnualRecapPromoCard } from "@/components/share/AnnualRecapPromoCard";
-import { ExpiringDocCard } from "@/components/share/ExpiringDocCard";
-import { toast } from "@/components/ios/toast";
+
+// ─── Below-the-fold lazy loads (perf audit, mayo 2026) ─────────────────────
+// Estos cards aparecen tras el hero + QuickStats + NBA → off-screen en el
+// primer paint en mobile. Quitarlos del bundle inicial de /today reduce JS
+// sincrónico y TBT (Total Blocking Time).
+//
+// `ssr: false`:
+//   - AnnualRecapPromoCard: rinde solo Nov-Ene (condicional por mes).
+//     SSR del card vacío gasta render-time del server sin output útil.
+//   - ExpiringDocCard: depende de query de documents + lógica de expiry
+//     calculada client-side. SSR no aporta HTML estable.
+//
+// NO lazy: QuickStatsCard, RecapShareButton (above the fold), HeroParallax
+// (parte del hero), QuickChips (above the fold también).
+const AnnualRecapPromoCard = dynamic(
+  () => import("@/components/share/AnnualRecapPromoCard").then((m) => ({ default: m.AnnualRecapPromoCard })),
+  { ssr: false, loading: () => null },
+);
+const ExpiringDocCard = dynamic(
+  () => import("@/components/share/ExpiringDocCard").then((m) => ({ default: m.ExpiringDocCard })),
+  { ssr: false, loading: () => null },
+);
 import { scheduleDailyBrief } from "@/lib/daily-brief";
 import { pushWidgetFromCommandCenter } from "@/lib/native/widget-bridge";
 import { useCountUp } from "@/lib/hooks/use-count-up";
@@ -87,27 +106,10 @@ export default function TodayPage() {
   const { data: reservations } = useReservations(tripId);
   const { data: documents } = useDocuments(tripId);
 
-  // El campo `recap_public` NO está en el shape `Trip` que devuelve el hook
-  // (no se incluye en el select del fetchActiveTrip). Lo pegamos por separado
-  // solo para decidir si el RecapShareButton va habilitado o disabled-with-tooltip.
-  // Si la query falla o tira null, asumimos `false` (UX seguro = no compartir).
-  const { client, mode } = useSupabase();
-  const [recapPublic, setRecapPublic] = useState<boolean>(false);
-  useEffect(() => {
-    if (!tripId || mode !== "online" || !client) { setRecapPublic(false); return; }
-    let alive = true;
-    client
-      .from("trips")
-      .select("recap_public")
-      .eq("id", tripId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!alive) return;
-        const v = (data as { recap_public?: boolean } | null)?.recap_public;
-        setRecapPublic(v === true);
-      });
-    return () => { alive = false; };
-  }, [tripId, client, mode]);
+  // `recap_public` viene incluido en TRIP_LIST_COLUMNS (Iter 6), así que el
+  // shape de `trip` del hook ya lo expone. Antes hacíamos un side-query separado,
+  // ahora leemos directo del Trip activo.
+  const recapPublic = cc?.trip?.recap_public === true;
 
   const stats = useMemo(() => {
     if (!cc) return null;
@@ -322,27 +324,17 @@ export default function TodayPage() {
 
       {/* ─── 1.6. SHARE RECAP — botón compartir og:image del viaje ───
           Solo es funcional si trip.recap_public === true (opt-in en Ajustes).
-          Si no, mostramos un proxy disabled-with-tooltip que avisa al user
-          dónde activarlo. Evita confusión: antes el botón aparecía siempre
-          pero el endpoint pública /recap/[id] devolvía 404 si flag = false. */}
+          Si recap_public es false, RecapShareButton se renderea como Link a
+          /settings#share-trip (disabled visual + navegable). Antes era un
+          botón que mostraba un toast.info sin llevar a ningún lado — UX
+          confuso (user no sabía dónde activar el flag). */}
       {trip?.id && (
         <section className="px-4 mt-3" aria-label="Compartir recap del viaje">
-          {recapPublic ? (
-            <RecapShareButton tripId={trip.id} tripName={trip.name || trip.destination || "Mi viaje"} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => toast("Activá Compartir en Ajustes", "info")}
-              className="w-full opacity-50 cursor-not-allowed pressable"
-              title="Activá en Ajustes para compartir"
-              aria-label="Compartir recap (desactivado — activá en Ajustes)"
-              aria-disabled="true"
-            >
-              <div className="ios-card p-3 flex items-center justify-center gap-2 text-[13px] text-muted-foreground">
-                <span>Compartir recap (activá en Ajustes)</span>
-              </div>
-            </button>
-          )}
+          <RecapShareButton
+            tripId={trip.id}
+            tripName={trip.name || trip.destination || "Mi viaje"}
+            disabled={!recapPublic}
+          />
         </section>
       )}
 

@@ -13,7 +13,28 @@ import { createSupabaseService } from "@/lib/supabase/service";
  * futura UI de admin).
  */
 
-export const runtime = "nodejs";
+// Edge runtime: el endpoint sólo hace `fetch` a Supabase REST (vía @supabase/supabase-js,
+// que es fetch-based y edge-safe) y devuelve JSON. No usa libs Node-only.
+// Beneficio: cold start ~10x más rápido + edge-region routing → menor TTFB global.
+export const runtime = "edge";
+
+// Columnas que efectivamente consume el client (AI agentic + Discover UI + MCP).
+// `select("*")` traía 30+ columnas internas (audit, embeddings, internal_notes)
+// inflando el payload. Tighten para reducir egress + serialize cost.
+const SELECT_COLUMNS = [
+  "id",
+  "slug",
+  "name",
+  "country",
+  "category",
+  "premium_level",
+  "vibe_tags",
+  "hero_photo_url",
+  "summary",
+  "view_count",
+  "best_months",
+  "created_at",
+].join(",");
 
 export async function GET(req: NextRequest) {
   const sb = createSupabaseService();
@@ -27,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   let query = sb
     .from("curated_destinations")
-    .select("*")
+    .select(SELECT_COLUMNS)
     .order("view_count", { ascending: false });
 
   if (country) query = query.eq("country", country);

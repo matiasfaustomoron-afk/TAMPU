@@ -66,6 +66,12 @@ export interface TripRealtimeHandlers {
   tripMembers?: () => void;
   /** Filtrado por `trip_id=eq.{tripId}` en la tabla `polls`. */
   polls?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `email_in_entries` (inbox de booking parsers). */
+  emailInEntries?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `documents`. */
+  documents?: () => void;
+  /** Filtrado por `trip_id=eq.{tripId}` en la tabla `packing_items`. */
+  packingItems?: () => void;
 }
 
 export function useTripRealtime(tripId: string | null | undefined, onChange?: TripRealtimeHandlers): {
@@ -160,6 +166,21 @@ export function useTripRealtime(tripId: string | null | undefined, onChange?: Tr
           "postgres_changes",
           { event: "*", schema: "public", table: "polls", filter: `trip_id=eq.${tripId}` },
           () => dispatch("polls"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "email_in_entries", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("emailInEntries"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "documents", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("documents"),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "packing_items", filter: `trip_id=eq.${tripId}` },
+          () => dispatch("packingItems"),
         );
 
       // ─── Presence ───

@@ -20,7 +20,12 @@ const es = {
     next: "Siguiente",
     viewAll: "Ver todos",
     noResults: "Sin resultados",
-    confirm: "Confirmar",
+    confirm: {
+      // Genéricos para ConfirmSheet (reemplaza window.confirm).
+      cancel: "Cancelar",
+      default: "Confirmar",
+      deleteAction: "Eliminar",
+    },
     reset: "Restablecer",
     go: "Ir",
     start: "Iniciar",
@@ -409,6 +414,8 @@ const es = {
     tapToOpen: "Tocá un pase para abrirlo",
     uploadHint: "Subí tu pase de embarque, pasaporte o seguro. PDF o imagen.",
     namePlaceholder: "Ej. Pase de embarque GRU→DXB",
+    expiresAt: "Fecha de vencimiento",
+    expiresAtHint: "Visa, pasaporte, seguro",
     boardingPass: "Pase de embarque",
     boardingPasses: "Pases de embarque",
     orphanBoardings: "Pases sin vincular a reserva",

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { toast } from "@/components/ios/toast";
+import { useConfirmSheet } from "@/lib/hooks/use-confirm-sheet";
 import { useActiveTrip, useTripMembers, useMutations } from "@/lib/hooks/use-trip-data";
 import { useTripRealtime } from "@/lib/hooks/use-trip-realtime";
 import { useSupabase } from "@/lib/context/supabase-provider";
@@ -73,6 +74,8 @@ function SharePageContent() {
   // garantiza que /today lea el trip recién activado en vez del cache previo.
   // Usar la raw `setActiveTrip(client, ...)` no invalidaba el cache → race.
   const { activateTrip } = useMutations();
+  // Reemplaza window.confirm() — drag-to-dismiss + escape + a11y.
+  const { confirm: confirmSheetApi, sheet: confirmSheet } = useConfirmSheet();
   // pendingForMe sigue siendo local porque la query es por email (no por
   // tripId), no cabe en `useTripMembers`. Lo migramos al data layer
   // (`fetchPendingInvites`) para que toda la lógica SQL viva en /lib/data.
@@ -234,7 +237,13 @@ function SharePageContent() {
   const removeMember = useCallback(
     async (id: string) => {
       if (!client) return;
-      if (!confirm("¿Quitar a este miembro del viaje?")) return;
+      const ok = await confirmSheetApi({
+        title: "¿Quitar a este miembro del viaje?",
+        message: "Va a perder acceso al viaje. Podés volver a invitarlo más tarde.",
+        destructive: true,
+        confirmLabel: "Quitar",
+      });
+      if (!ok) return;
       try {
         await removeMemberData(client, id);
         toast("Miembro removido", "info");
@@ -243,7 +252,7 @@ function SharePageContent() {
         toast("No se pudo remover", "error");
       }
     },
-    [client, refetch],
+    [client, refetch, confirmSheetApi],
   );
 
   // Demo mode — no auth
@@ -434,6 +443,7 @@ function SharePageContent() {
           </Button>
         </div>
       </Sheet>
+      {confirmSheet}
     </div>
   );
 }

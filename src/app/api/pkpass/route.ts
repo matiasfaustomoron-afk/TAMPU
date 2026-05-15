@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PKPass } from "passkit-generator";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
 /**
  * `.pkpass` generator — Apple Wallet boarding pass / event ticket / generic pass.
@@ -29,6 +30,11 @@ interface PassRequest {
   serial: string;
   description: string;
   organizationName?: string;
+  // Ownership context — el server valida que el caller tenga acceso a este
+  // trip antes de firmar el pkpass. `reservation_id` es opcional pero si viene,
+  // también se valida ownership de la reserva.
+  trip_id?: string;
+  reservation_id?: string;
   flight?: {
     carrier: string;
     flightNumber: string;
@@ -50,6 +56,20 @@ interface PassRequest {
   };
   backgroundColor?: string;
   foregroundColor?: string;
+}
+
+function isOriginAllowed(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true; // server-side fetch / curl OK — auth Supabase nos cubre
+  const allowed = new Set<string>();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (siteUrl) allowed.add(siteUrl);
+  allowed.add("http://localhost:3000");
+  allowed.add("http://localhost:3001");
+  allowed.add("capacitor://localhost");
+  allowed.add("ionic://localhost");
+  if (origin.endsWith(".vercel.app")) return true;
+  return allowed.has(origin.replace(/\/$/, ""));
 }
 
 function buildPassJson(req: PassRequest): Record<string, unknown> {
@@ -143,6 +163,26 @@ const TRANSPARENT_PX_PNG = Buffer.from(
 );
 
 export async function POST(req: NextRequest) {
+  // ─── Origin check (anti-CSRF) ───
+  if (!isOriginAllowed(req)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
+  // ─── Auth server-side ───
+  const sb = await createSupabaseServer();
+  if (!sb) {
+    return NextResponse.json({ error: "auth_not_configured" }, { status: 503 });
+  }
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // TODO(security): aplicar rate-limit con `canCallProxy(req, "/api/pkpass")`.
+  // Por ahora la auth + ownership check ya elimina el vector de abuso anónimo;
+  // el rate-limit es defensa-en-profundidad para evitar que un user logueado
+  // queme el certificado generando 10k passes/min.
+
   const teamId = process.env.PKPASS_TEAM_ID;
   const certB64 = process.env.PKPASS_SIGNER_CERT_B64;
   const keyB64 = process.env.PKPASS_SIGNER_KEY_B64;
@@ -177,6 +217,61 @@ export async function POST(req: NextRequest) {
   }
   if (!body.type || !body.serial || !body.description) {
     return NextResponse.json({ error: "type, serial, description requeridos" }, { status: 400 });
+  }
+
+  // ─── Ownership check ───
+  // Si el caller pasa `trip_id`, validamos que pertenezca al user (owner o
+  // member). Si pasa `reservation_id`, validamos que su trip pertenezca al
+  // user. Sin estos campos, dejamos pasar para back-compat — pero idealmente
+  // el client SIEMPRE manda al menos uno.
+  if (body.trip_id) {
+    const { data: trip } = await sb
+      .from("trips")
+      .select("id, user_id")
+      .eq("id", body.trip_id)
+      .maybeSingle();
+    let allowed = trip?.user_id === user.id;
+    if (!allowed && trip) {
+      // Check trip_members
+      const { data: member } = await sb
+        .from("trip_members")
+        .select("trip_id")
+        .eq("trip_id", body.trip_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      allowed = !!member;
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: "forbidden_trip" }, { status: 403 });
+    }
+  }
+  if (body.reservation_id) {
+    const { data: reservation } = await sb
+      .from("reservations")
+      .select("id, trip_id")
+      .eq("id", body.reservation_id)
+      .maybeSingle();
+    if (!reservation) {
+      return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+    }
+    const { data: trip } = await sb
+      .from("trips")
+      .select("user_id")
+      .eq("id", reservation.trip_id)
+      .maybeSingle();
+    let allowed = trip?.user_id === user.id;
+    if (!allowed && trip) {
+      const { data: member } = await sb
+        .from("trip_members")
+        .select("trip_id")
+        .eq("trip_id", reservation.trip_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      allowed = !!member;
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: "forbidden_reservation" }, { status: 403 });
+    }
   }
 
   const passJson = buildPassJson(body);

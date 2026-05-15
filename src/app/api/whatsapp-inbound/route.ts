@@ -120,6 +120,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ─── DEPRECATED ───
+  // Reemplazado por `/api/webhooks/whatsapp` (con signature verification).
+  // En producción rechazamos con 410 Gone para forzar la migración. En
+  // dev/test seguimos respondiendo para no romper fixtures locales.
+  console.warn("[whatsapp-inbound] DEPRECATED — use /api/webhooks/whatsapp");
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        error: "gone",
+        moved_to: "/api/webhooks/whatsapp",
+        message: "Este endpoint fue reemplazado. Actualizá el webhook URL del provider.",
+      },
+      { status: 410 },
+    );
+  }
+
   // 1) Detectar provider y normalizar
   const contentType = req.headers.get("content-type") || "";
   let msg: NormalizedWhatsApp | null = null;

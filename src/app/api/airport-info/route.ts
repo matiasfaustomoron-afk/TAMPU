@@ -15,7 +15,7 @@ const ALLOWED_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
 function withCors(res: NextResponse, origin: string | null): NextResponse {
   const ok = !origin || ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost") || origin.endsWith(".vercel.app");
   if (ok && origin) res.headers.set("Access-Control-Allow-Origin", origin);
-  res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.headers.set("Access-Control-Allow-Headers", "Content-Type, x-anthropic-key, x-gemini-key");
   res.headers.set("Vary", "Origin");
   return res;
@@ -137,9 +137,19 @@ function fallback(iata: string): AirportInfoResult {
   };
 }
 
-export async function POST(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  const body = await req.json() as { iata: string; name?: string; city?: string; country?: string };
+// El payload por IATA es estable por días (los aeropuertos cambian raramente).
+// Cache 24h en CDN + 7 días stale-while-revalidate: el primer request del día
+// paga el LLM, el resto del día sirve desde edge. Si el contenido stalee, el
+// CDN sirve cached y revalida en background.
+const CACHE_HEADERS = {
+  "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+};
+
+async function handleAirportInfo(
+  req: NextRequest,
+  origin: string | null,
+  body: { iata: string; name?: string; city?: string; country?: string },
+): Promise<NextResponse> {
   if (!body?.iata) {
     return withCors(NextResponse.json({ error: "Missing iata" }, { status: 400 }), origin);
   }
@@ -166,7 +176,40 @@ export async function POST(req: NextRequest) {
       provider: envelope.provider,
       model: envelope.model,
     }).catch((e) => captureException(e, { tag: "airport-info.record" }));
-    if (envelope.result) return withCors(NextResponse.json(envelope.result), origin);
+    if (envelope.result) {
+      return withCors(
+        NextResponse.json(envelope.result, { headers: CACHE_HEADERS }),
+        origin,
+      );
+    }
   }
-  return withCors(NextResponse.json(fallback(iata)), origin);
+  // Fallback también es cacheable (no quema budget) — TTL más corto para retry
+  // cuando vuelva el LLM.
+  return withCors(
+    NextResponse.json(fallback(iata), {
+      headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
+    }),
+    origin,
+  );
+}
+
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  const body = (await req.json()) as { iata: string; name?: string; city?: string; country?: string };
+  return handleAirportInfo(req, origin, body);
+}
+
+// GET handler equivalente para que el endpoint sea cacheable por CDN/edge cache
+// (POST nunca se cachea por convención HTTP). Query string: ?iata=EZE&name=...&city=...&country=...
+// Mismo IATA + mismos parámetros → misma respuesta (idempotencia garantizada).
+export async function GET(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  const url = new URL(req.url);
+  const body = {
+    iata: url.searchParams.get("iata") || "",
+    name: url.searchParams.get("name") || undefined,
+    city: url.searchParams.get("city") || undefined,
+    country: url.searchParams.get("country") || undefined,
+  };
+  return handleAirportInfo(req, origin, body);
 }

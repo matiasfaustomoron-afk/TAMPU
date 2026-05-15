@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchMercadoPagoPayment } from "@/lib/payments/mercadopago";
 import { createSupabaseService } from "@/lib/supabase/service";
 
@@ -31,6 +32,46 @@ interface WebhookBody {
   data?: { id?: string };
 }
 
+/**
+ * Verificá la firma `x-signature` de MP cuando hay secret configurado.
+ *
+ * MP firma con `ts=<unix>,v1=<hmac_sha256(secret, dataID + ts + request-id)>`.
+ * Si el secret NO está seteado, dejamos pasar (back-compat con setups viejos).
+ * Si está seteado y la firma falla, 401.
+ *
+ * Spec: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks#editor_2
+ */
+function verifyMercadoPagoSignature(
+  req: NextRequest,
+  dataId: string | null,
+): { ok: boolean; reason?: string } {
+  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+  if (!secret) return { ok: true, reason: "no-secret" };
+
+  const sigHeader = req.headers.get("x-signature");
+  const requestId = req.headers.get("x-request-id");
+  if (!sigHeader || !dataId) return { ok: false, reason: "missing-headers" };
+
+  // Parse "ts=...,v1=..."
+  const parts = sigHeader.split(",").map((s) => s.trim());
+  const ts = parts.find((p) => p.startsWith("ts="))?.slice(3);
+  const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3);
+  if (!ts || !v1) return { ok: false, reason: "malformed-signature" };
+
+  const manifest = `id:${dataId};request-id:${requestId ?? ""};ts:${ts};`;
+  const expected = createHmac("sha256", secret).update(manifest).digest("hex");
+
+  try {
+    const a = Buffer.from(v1, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length) return { ok: false, reason: "length-mismatch" };
+    if (!timingSafeEqual(a, b)) return { ok: false, reason: "hmac-mismatch" };
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "compare-failed" };
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: WebhookBody;
   try {
@@ -46,6 +87,13 @@ export async function POST(req: NextRequest) {
 
   const eventType = body.type || queryType;
   const paymentId = body.data?.id || queryId;
+
+  // ─── Signature verification (opcional pero recomendado) ───
+  const sig = verifyMercadoPagoSignature(req, paymentId ? String(paymentId) : null);
+  if (!sig.ok) {
+    console.warn("[mp-webhook] signature verification failed:", sig.reason);
+    return NextResponse.json({ error: "invalid-signature", reason: sig.reason }, { status: 401 });
+  }
 
   if (eventType !== "payment" || !paymentId) {
     // MP también manda "test" durante setup — ack OK pero no procesamos

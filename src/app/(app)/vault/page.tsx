@@ -17,6 +17,8 @@ import {
   Camera, Download, Image as ImageIcon, File as FileIcon, Sparkles, Loader2,
 } from "lucide-react";
 import { capturePhoto, haptic, isNative } from "@/lib/native/platform";
+import { toast } from "@/components/ios/toast";
+import { useConfirmSheet } from "@/lib/hooks/use-confirm-sheet";
 import { withApiKeyHeaders } from "@/lib/ai/user-key";
 import { saveVaultBlob, deleteVaultBlob, openVaultBlob, downloadVaultBlob, getVaultDataUrl, estimateVaultUsage } from "@/lib/vault/storage";
 import { readVersioned, writeVersioned } from "@/lib/storage/version";
@@ -61,6 +63,8 @@ export default function VaultPage() {
   // mutations para que invaliden cache automáticamente.
   const { data: attachmentsRaw, loading: attachmentsLoading, refetch: refetchAttachments } = useAttachments(trip?.id);
   const { addAttachment, updateAttachment: updateAttachmentMut, deleteAttachment: deleteAttachmentMut } = useMutations();
+  // Reemplazo iOS-style del window.confirm() — drag-to-dismiss + escape + a11y.
+  const { confirm, sheet: confirmSheet } = useConfirmSheet();
   const [files, setFiles] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -95,6 +99,9 @@ export default function VaultPage() {
   const [extractedFields, setExtractedFields] = useState<{ provider?: string | null; locator?: string | null; flight_route?: string | null; departure_date?: string | null }>({});
   const [linkedReservationLabel, setLinkedReservationLabel] = useState<string | null>(null);
   const [manualReservationId, setManualReservationId] = useState<string>(""); // user override
+  // Fecha de vencimiento opcional (visa/pasaporte/seguro). Si el user no ingresa
+  // nada, queda null. Persiste a attachments.expires_at (migración 00037).
+  const [uploadExpiresAt, setUploadExpiresAt] = useState<string>("");
 
   useEffect(() => { isNative().then(setNativeAvailable); }, []);
   useEffect(() => { estimateVaultUsage().then(setUsage).catch(() => {}); }, [files]);
@@ -207,10 +214,10 @@ export default function VaultPage() {
       // para usar su id en el storage path también (consistente con la policy
       // de storage que matchea por prefix `<auth.uid()>/...`).
       const { data: { user: callerUser } } = await client.auth.getUser();
-      if (!callerUser) { alert("Sesión expirada. Volvé a hacer login."); setUploading(false); return; }
+      if (!callerUser) { toast("Sesión expirada. Volvé a hacer login.", "error"); setUploading(false); return; }
       const path = `${callerUser.id}/${trip.id}/${Date.now()}_${selectedFile.name}`;
       const { error: uploadErr } = await client.storage.from("travel-vault").upload(path, selectedFile);
-      if (uploadErr) { alert(uploadErr.message); setUploading(false); return; }
+      if (uploadErr) { toast(uploadErr.message, "error"); setUploading(false); return; }
       // Manual override > IA match
       const manual = manualReservationId ? reservations?.find(r => r.id === manualReservationId) : null;
       const match = manual ? { reservation: manual } : (reservations?.length ? findBestReservationMatch(extractedFields, reservations) : null);
@@ -229,9 +236,10 @@ export default function VaultPage() {
           is_critical: false,
           available_offline: false,
           notes: uploadNotes || null,
+          expires_at: uploadExpiresAt || null,
         });
       } catch (e) {
-        alert((e as Error).message);
+        toast((e as Error).message, "error");
         setUploading(false);
         return;
       }
@@ -244,7 +252,7 @@ export default function VaultPage() {
       try {
         await saveVaultBlob(id, selectedFile);
       } catch (e) {
-        alert(`No se pudo guardar el archivo: ${(e as Error).message}`);
+        toast(`No se pudo guardar el archivo: ${(e as Error).message}`, "error");
         setUploading(false);
         return;
       }
@@ -256,6 +264,7 @@ export default function VaultPage() {
         file_type: selectedFile.type, file_size: selectedFile.size,
         storage_path: `idb:${id}`, is_favorite: false, is_critical: isCritical,
         available_offline: true, notes: uploadNotes || null,
+        expires_at: uploadExpiresAt || null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
 
@@ -276,10 +285,10 @@ export default function VaultPage() {
 
     setSelectedFile(null); setUploadName(""); setUploadNotes("");
     setExtractedFields({}); setLinkedReservationLabel(null);
-    setManualReservationId("");
+    setManualReservationId(""); setUploadExpiresAt("");
     setShowUpload(false); setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, [selectedFile, trip, client, mode, uploadCategory, uploadNotes, uploadName, files, reservations, extractedFields, manualReservationId, addAttachment, refetchAttachments]);
+  }, [selectedFile, trip, client, mode, uploadCategory, uploadNotes, uploadName, uploadExpiresAt, files, reservations, extractedFields, manualReservationId, addAttachment, refetchAttachments]);
 
   const toggleFavorite = useCallback(async (att: Attachment) => {
     if (mode === "online" && client && trip) {
@@ -296,7 +305,12 @@ export default function VaultPage() {
   }, [client, mode, files, trip, updateAttachmentMut]);
 
   const deleteFile = useCallback(async (att: Attachment) => {
-    if (!confirm(`¿Eliminar "${att.file_name}"?`)) return;
+    const ok = await confirm({
+      title: `¿Eliminar "${att.file_name}"?`,
+      message: "Esta acción no se puede deshacer.",
+      destructive: true,
+    });
+    if (!ok) return;
     if (mode === "online" && client) {
       await client.storage.from("travel-vault").remove([att.storage_path]);
       await deleteAttachmentMut({ id: att.id, tripId: trip?.id });
@@ -307,7 +321,7 @@ export default function VaultPage() {
       setFiles(updated);
       if (trip) writeVersioned(`travel-os-vault-${trip.id}`, VAULT_SCHEMA, updated);
     }
-  }, [client, mode, files, trip, deleteAttachmentMut]);
+  }, [client, mode, files, trip, deleteAttachmentMut, confirm]);
 
   const handleOpen = useCallback(async (att: Attachment) => {
     if (att.storage_path.startsWith("idb:")) {
@@ -515,6 +529,16 @@ export default function VaultPage() {
                 <label className="text-[10px] uppercase text-muted-foreground">{t.vault.notes}</label>
                 <Input value={uploadNotes} onChange={e => setUploadNotes(e.target.value)} placeholder="..." className="mt-1" />
               </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase text-muted-foreground">{t.vault.expiresAt}</label>
+                <Input
+                  type="date"
+                  value={uploadExpiresAt}
+                  onChange={e => setUploadExpiresAt(e.target.value)}
+                  className="mt-1"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">{t.vault.expiresAtHint}</p>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-2 text-xs">
@@ -644,6 +668,7 @@ export default function VaultPage() {
           </p>
         </div>
       </div>
+      {confirmSheet}
     </div>
   );
 }

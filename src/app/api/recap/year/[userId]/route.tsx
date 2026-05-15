@@ -81,13 +81,25 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     return new Response("Not found", { status: 404 });
   }
 
-  // Nombre amigable para el título — full_name → handle del email → "vos".
+  // Nombre amigable para el título.
+  //
+  // PRIVACY (post-audit): el link `/recap/year/[userId]` es público y
+  // compartible — mostrar `full_name` o handle del email leakea info real
+  // del user a cualquiera que tenga el UUID. Hasta que tengamos la columna
+  // `profiles.share_name` (opt-in explícito), hardcodeamos un display name
+  // genérico. La UI del recap se sigue compartiendo, pero sin nombre real.
+  //
+  // TODO(migration): agregar `share_name boolean default false` a `profiles`
+  // y reactivar la lógica de `full_name` cuando esté seteado a `true`.
+  const profileMaybe = profile as
+    | { full_name?: string | null; email?: string | null; share_name?: boolean | null }
+    | null;
   const displayName = (() => {
-    const fn = profile?.full_name?.trim();
-    if (fn) return fn;
-    const handle = profile?.email?.split("@")[0]?.trim();
-    if (handle) return handle;
-    return "vos";
+    if (profileMaybe?.share_name === true) {
+      const fn = profileMaybe.full_name?.trim();
+      if (fn) return fn;
+    }
+    return "Viajero";
   })();
 
   // Stats agregados del año.
