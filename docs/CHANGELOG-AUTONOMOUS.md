@@ -483,3 +483,56 @@ Commit Iter 6: `720cfb5`.
 
 **Detenido por el founder** (2026-05-15T17:50Z). Cron `ae9d8198` cancelado. Ejecuté 6 iteraciones de las 8 planeadas (75%). Resumen consolidado abajo en el commit posterior — `docs/AUTONOMOUS-LOOP-SUMMARY.md`.
 
+---
+
+## AUDIT FINAL — Post-loop deep audit + 43 fixes críticos (2026-05-15T18:50Z)
+
+**Pipeline**: User aplicó las 6 migrations → 5 audit agents profundos paralelos (DB / Security / Code / UX / Performance) → 20+ issues nuevos detectados → 5 fix agents paralelos disjuntos → **43 fixes aplicados + 1 hotfix** → commit `2dfca01` + hotfix `d3e0c73` → deploy production → smoke 200/200/JSON ✓ + security headers verificados.
+
+### Cambios (43 + 1 hotfix) por dominio
+
+**Security (8)** — `/api/checkout/create-session` auth server-side + Origin whitelist (era POST público con user_id arbitrario); `/api/email-in` `TAMPU_EMAIL_IN_SECRET` obligatorio en prod (era público en dev); `/api/pkpass` Origin check + auth + validar trip/reservation ownership; `/api/recap/year/[userId]` displayName="Viajero" salvo `profile.share_name` opt-in; `next.config.ts` security headers globales (X-Frame DENY, HSTS 2y preload, Referrer strict-origin, X-Content nosniff, Permissions-Policy); Sentry client+server `beforeSend` scrubber + `sendDefaultPii=false`; `/api/whatsapp-inbound` 410 Gone en prod (deprecated); `/api/mercadopago-webhook` HMAC SHA-256 timingSafeEqual.
+
+**Data wire (10)** — **`alert_dismissals` FINALMENTE wired** (Iter 6 dejó tabla huérfana): `src/lib/data/alerts.ts` NEW + `/alerts` page hidrata desde DB + persist optimistic; **`expires_at` end-to-end wired** (Iter 5 column huérfana): `ATTACHMENT_LIST_COLUMNS` incluye expires_at + vault upload sheet date picker + i18n keys + `Attachment.expires_at: string|null` type; `/today` removed side-effect query recap_public (viene de cc.trip); `useTripRealtime` handlers opt-in para email_in_entries/documents/packing_items (publicación 00033 sin consumers); `supabase-generated.ts` Attachment+Trip stubs.
+
+**Code (5)** — `supabase-provider` SIGNED_OUT invoca `resetClient()` (era dead code Iter 6); Provider value `useMemo` (60 consumers ya no re-renderean); `query-provider.defaultOptions.mutations.onError` central → `reportError + toast` (era zero onError → "✓ Cargado" falso success); `lucide-react@1.7.0` **VERIFIED real** (no phantom — registry 1.0-1.16); middleware path regex stricter `/\\.[a-z0-9]{2,5}$/` (era `pathname.includes(".")`).
+
+**UX (10)** — `/itinerary` header chips `flex flex-wrap` (era overflow mobile <380px); `/vault` 4 alert() nativos → `toast` (rompía Capacitor iOS); `ConfirmSheet.tsx` NEW abstraction + `useConfirmSheet.tsx` hook Promise-style + `t.common.confirm.*` i18n; sweep 4 confirm() → useConfirmSheet (vault, itinerary, members, expenses); `RecapShareButton disabled` → `<Link href="/settings#share-trip">` en vez de toast.info; `/today` usa `<RecapShareButton disabled={!recapPublic}/>` simplificado.
+
+**Performance + Obs (10)** — `/api/curated-destinations` runtime=edge + cache 1h; `/api/airport-info` Cache-Control 1d/7d swr + GET handler cacheable; `/api/destination-photo` runtime=edge; `query-provider persistQueryClient` TODO (defer Iter 8); Sentry client+server **top-level init** (era IIFE async → no auto-instrument); `/today` lazy AnnualRecapPromoCard + ExpiringDocCard via `next/dynamic`; `tsconfig` target ES2017→ES2022; `src/app/(app)/error.tsx` NEW segment boundary; fonts audit (134 `font-medium` justifica weight 500); `next.config optimizePackageImports` +@radix-ui/* +recharts +@sentry/nextjs.
+
+**Hotfix d3e0c73** — `/api/curated-destinations` SELECT_COLUMNS reverted to `*` (un agent listó columnas asumidas, real schema tiene PK distinta → "column id does not exist" 500). Mantiene edge runtime + cache. TODO Iter 8: auditar schema real.
+
+### Verificación final
+
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` 236/236 ✓
+- Deploy production READY ✓
+- Smoke /welcome 200, /login 200, /signup 307, /api/curated-destinations 200 JSON ✓, /share 200 ✓
+- Security headers en prod: X-Frame DENY ✓, HSTS 2y preload ✓, Referrer-Policy strict-origin ✓, X-Content nosniff ✓, Permissions-Policy ✓
+- Auth gates: /api/recap fake → 404 ✓, /api/pkpass POST → 307 (middleware-protected) ✓, /api/checkout → 307 ✓
+
+### Carry-overs Iter 7+
+
+1. 7 confirm() restantes (passcode/journal/settings 4x/tasks/trips) → sweep ConfirmSheet
+2. `persistQueryClient` impl + storage persister package install
+3. Sentry source maps + uploadDuringBuild
+4. CSP header (defer porque puede romper inline scripts)
+5. Migration `profiles.share_name boolean default false` (recap/year displayName)
+6. /api/curated-destinations: auditar schema real y migrar a SELECT_COLUMNS
+7. /api/ai-proxy Turnstile validation
+8. Más routes edge runtime
+9. /journal Supabase sync entries (P0 carry-over loop)
+10. /itinerary day ops drag&drop (P0 carry-over loop)
+11. /journal i18n masivo
+12. MercadoPago checkout wire real
+
+### Token cost estimado audit final
+
+- 5 audit agents: ~500k input tokens
+- 5 fix agents: ~440k input tokens
+- Verify + hotfix + commit + deploy: ~10k
+- Total: ~950k tokens (~USD 6.7)
+
+Commits: `2dfca01` (43 fixes) + `d3e0c73` (hotfix curated-destinations).
+
