@@ -16,6 +16,7 @@ import {
   type ItemType,
 } from "@/lib/comments/comment";
 import { useSupabase } from "@/lib/context/supabase-provider";
+import { useProfilesBatch } from "@/lib/hooks/use-profile";
 import { logActivity } from "@/lib/collab/activity-feed";
 import { haptic } from "@/lib/native/platform";
 import { useI18n } from "@/i18n/provider";
@@ -73,6 +74,23 @@ export function CommentThread({
   }, [comments, showResolved]);
 
   const threads = useMemo(() => buildThread(visibleComments), [visibleComments]);
+
+  // Batch lookup de profiles para mostrar avatar real + nickname. Filtramos
+  // a UUIDs reales (descartamos "demo-user" y el current user) y dejamos que
+  // el hook dedupe internamente. Si Supabase no está configurado el hook
+  // devuelve Map vacío y el render cae al fallback con initial+hue.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const authorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of comments) {
+      if (c.author_id && c.author_id !== userId && UUID_RE.test(c.author_id)) {
+        ids.add(c.author_id);
+      }
+    }
+    return Array.from(ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comments, userId]);
+  const { data: profilesMap } = useProfilesBatch(authorIds);
   // Counter: solo abiertos no eliminados
   const activeCount = useMemo(() => {
     const resolvedRootIds = new Set(
@@ -177,6 +195,7 @@ export function CommentThread({
                     <CommentRow
                       comment={th.root}
                       userId={userId}
+                      profilesMap={profilesMap}
                       onReply={() => setReplyTo(th.root.id)}
                       onDelete={() => handleDelete(th.root.id)}
                       onResolve={() => handleResolve(th.root.id, !!th.root.resolved_at)}
@@ -189,6 +208,7 @@ export function CommentThread({
                             key={r.id}
                             comment={r}
                             userId={userId}
+                            profilesMap={profilesMap}
                             isReply
                             onReply={() => setReplyTo(th.root.id)}
                             onDelete={() => handleDelete(r.id)}
@@ -229,10 +249,12 @@ export function CommentThread({
 }
 
 function CommentRow({
-  comment, userId, isReply, onReply, onDelete, onResolve, onReaction,
+  comment, userId, profilesMap, isReply, onReply, onDelete, onResolve, onReaction,
 }: {
   comment: Comment;
   userId: string;
+  /** Map<userId, ProfilePublic> del batch lookup (avatar + @nick). Opcional. */
+  profilesMap?: Map<string, import("@/lib/data/profiles").ProfilePublic>;
   isReply?: boolean;
   onReply: () => void;
   onDelete: () => void;
@@ -240,6 +262,7 @@ function CommentRow({
   onReaction?: (emoji: string) => void;
 }) {
   const { t } = useI18n();
+  const { user } = useSupabase();
   const isMine = comment.author_id === userId;
   const deleted = !!comment.deleted_at;
   const resolved = !!comment.resolved_at;
@@ -247,10 +270,37 @@ function CommentRow({
   const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Avatar resolution:
+  //   - current user: usamos avatar_url/picture de user_metadata (OAuth lo provee).
+  //   - otros users:  lookup en profilesMap (resultado de useProfilesBatch).
+  //                   Si todavía está loading o no hay match, caemos al
+  //                   fallback hue+initial usando author_name (snapshot).
+  const remoteProfile = !isMine ? profilesMap?.get(comment.author_id) ?? null : null;
+  const ownAvatarUrl = isMine
+    ? ((user?.user_metadata as Record<string, unknown> | undefined)?.avatar_url as string | undefined)
+      ?? ((user?.user_metadata as Record<string, unknown> | undefined)?.picture as string | undefined)
+      ?? null
+    : null;
+  const remoteAvatarUrl = remoteProfile?.avatar_url ?? null;
+  const avatarUrl = ownAvatarUrl ?? remoteAvatarUrl;
+  // Display name: para el current user mantenemos el snapshot (lo que él tipeó
+  // en el momento). Para otros, priorizamos @nickname → full_name → snapshot.
+  const displayName = isMine
+    ? comment.author_name
+    : (remoteProfile?.nickname?.trim()
+        || remoteProfile?.full_name?.trim()
+        || comment.author_name);
+
   return (
-    <div className="text-[12.5px] leading-snug">
+    <div className="text-[12.5px] leading-snug flex gap-2">
+      <CommentAvatar
+        name={displayName || comment.author_id}
+        avatarUrl={avatarUrl}
+        size={isReply ? 22 : 26}
+      />
+      <div className="min-w-0 flex-1">
       <div className="flex items-baseline gap-1.5">
-        <span className="font-semibold">{comment.author_name}</span>
+        <span className="font-semibold">{displayName}</span>
         <span className="text-[10.5px] text-muted-foreground">{commentAgo(comment.created_at)}</span>
         {resolved && (
           <span className="text-[10px] text-success font-medium">
@@ -335,6 +385,49 @@ function CommentRow({
           )}
         </div>
       )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Avatar inline para comments. Si hay avatar_url lo muestra; si no, fallback
+ * con la inicial sobre un hue determinístico por nombre. Pequeño (22-26px)
+ * para no dominar la fila.
+ */
+function CommentAvatar({ name, avatarUrl, size }: { name: string; avatarUrl: string | null; size: number }) {
+  const px = `${size}px`;
+  const initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  const hue = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }, [name]);
+
+  if (avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt={name}
+        style={{ width: px, height: px }}
+        className="rounded-full object-cover shrink-0 border border-border/40 mt-0.5"
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: px,
+        height: px,
+        backgroundColor: `hsl(${hue}, 55%, 78%)`,
+        color: `hsl(${hue}, 60%, 25%)`,
+        fontSize: Math.round(size * 0.45),
+      }}
+      className="rounded-full flex items-center justify-center font-bold shrink-0 select-none mt-0.5"
+      aria-hidden
+    >
+      {initial}
     </div>
   );
 }

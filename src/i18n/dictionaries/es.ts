@@ -267,6 +267,26 @@ const es = {
     destination: "Destino",
     dates: "Fechas",
     language: "Idioma",
+    profile: {
+      title: "Tu perfil",
+      subtitle: "Cómo te ven en comments, journal y feeds.",
+      nickname: "Nickname",
+      nicknameHint: "Tu handle público. Letras, números y _, entre 2 y 24 caracteres.",
+      nicknameTaken: "Ese nickname ya está en uso.",
+      nicknameInvalid: "Solo letras, números y _ (2–24 caracteres).",
+      nicknameAvailable: "Disponible",
+      avatarUrl: "URL del avatar",
+      avatarUrlHint: "Pegá una URL pública. Más adelante vas a poder subir imágenes desde acá.",
+      bio: "Bio",
+      bioHint: "Bio corta. Máximo 280 caracteres.",
+      fullName: "Nombre completo",
+      shareName: "Mostrar mi nombre real",
+      shareNameHint: "Si lo activás, tu nombre completo aparece junto a tu @nickname en comments y feeds. Default: apagado.",
+      save: "Guardar perfil",
+      saving: "Guardando…",
+      saved: "Perfil actualizado",
+      saveError: "No pudimos guardar el perfil",
+    },
   },
 
   // ─── PROFILE ───
@@ -484,6 +504,13 @@ const es = {
     all: "Todo",
     photoMoment: "Momento del viaje",
     addedToDiary: "agregada al diario",
+    feed: {
+      by: "por",
+      ago: "hace",
+      anonymous: "Anónimo",
+      viewProfile: "Ver perfil",
+      you: "Tú",
+    },
     printBook: {
       bindings: {
         softcover: "Tapa blanda",

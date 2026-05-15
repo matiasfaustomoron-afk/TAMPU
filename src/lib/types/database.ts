@@ -38,6 +38,14 @@ export interface Profile {
   timezone: string;
   preferred_currency: string;
   date_format: string;
+  /** Community fields (migration 00039). Default null; backfilled desde el email
+   *  para users existentes, autogenerado en el trigger handle_new_user para nuevos. */
+  nickname: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  /** Opt-in para mostrar full_name en lugares públicos (comments, feed).
+   *  Si false (default), solo se ve @nickname. */
+  share_name: boolean;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }

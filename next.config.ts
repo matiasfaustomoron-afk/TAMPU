@@ -37,6 +37,12 @@ const nextConfig: NextConfig = {
       "@sentry/nextjs",
       "date-fns",
     ],
+    // scrollRestoration true: Next.js gestiona scroll position en
+    // back/forward navigation. Sin esto, navegar /vault → /expenses → back
+    // perdía scroll position en /vault, dando sensación de "se trabó / tengo
+    // que refrescar". Browser-native scroll restoration está OFF por defecto
+    // en App Router; este flag lo enciende.
+    scrollRestoration: true,
   },
 
   // ─── External photo sources permitidas ───

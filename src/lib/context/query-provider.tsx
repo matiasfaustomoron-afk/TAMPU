@@ -37,18 +37,32 @@ export function TampuQueryProvider({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // staleTime 60s: en mobile la latencia de WiFi pública + Supabase
-            // hace que refetch frecuente sea más caro que mostrar data
-            // ligeramente vieja. 60s es el sweet spot entre UX inmediato y
-            // costos de Supabase (especialmente en /dashboard que consume 8+
-            // queries al mount).
-            staleTime: 60_000,
+            // staleTime 5min (bump mayo 2026 — nav perf audit):
+            // 60s era demasiado agresivo para navegación entre tabs. Cada
+            // toggle /today ↔ /expenses ↔ /vault disparaba refetch en cascada
+            // de queries compartidas (useTripActive, useTripMembers, etc.)
+            // generando "freeze" perceptible al navegar. 5 min es el nuevo
+            // sweet spot: realtime sub cubre updates frescos (use-trip-realtime),
+            // staleTime cubre tab-switch UX. Supabase realtime es la fuente
+            // de actualización, no el polling de focus.
+            staleTime: 5 * 60_000,
             // gcTime 10min: queries inactivas (componente desmontado) sobreviven
             // 10 min antes de garbage-collect. Esto permite navegación rápida
             // back/forward sin refetch (ej toggle entre /dashboard y /expenses).
             gcTime: 10 * 60_000,
             retry: 1,
-            refetchOnWindowFocus: true,
+            // refetchOnWindowFocus false (bump mayo 2026 — nav perf audit):
+            // El default true disparaba refetch en cascada cada vez que el user
+            // volvía al tab (multi-tab usage común en planning desktop), o tras
+            // bg/fg en mobile. Combinado con realtime sub que YA empuja updates
+            // frescos vía postgres_changes (use-trip-realtime), el window-focus
+            // refetch es redundante y caro. Apagarlo elimina la "ola de spinners"
+            // post tab-switch.
+            refetchOnWindowFocus: false,
+            // Reconnect SÍ refetch: si perdiste red y volvés, la sub realtime
+            // pudo haber perdido eventos durante el offline window — refetch
+            // explícito cierra el gap. "always" fuerza incluso con data fresh.
+            refetchOnReconnect: "always",
           },
           mutations: {
             // onError central — antes, cada mutation en use-trip-data.ts solo

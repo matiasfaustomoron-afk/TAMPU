@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
+import { useProfilesBatch } from "@/lib/hooks/use-profile";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
 import { saveVaultBlob, deleteVaultBlob, getVaultDataUrl } from "@/lib/vault/storage";
@@ -17,6 +18,12 @@ import { readVersioned, writeVersioned } from "@/lib/storage/version";
 import { toggleLikeRemote, insertCommentRemote, deleteCommentRemote } from "@/lib/journal/sync";
 import { HintCard } from "@/components/ios/hint-card";
 import { PrintBookSheet } from "@/components/journal/PrintBookSheet";
+import {
+  resolveAuthor,
+  displayNameForUser,
+  formatAgo,
+  type JournalAuthor,
+} from "@/lib/data/journal";
 import {
   Camera, Plus, BookOpen, Trash2, MapPin, X, Heart, MessageCircle,
   Plane, Utensils, Send, ChevronLeft, ChevronRight,
@@ -40,7 +47,10 @@ import {
  */
 
 const STORE_KEY_PREFIX = "travel-os-journal-";
-const JOURNAL_SCHEMA = 3;
+// v4 (mayo 2026): agregamos `user_id` a Comment y JournalEntry para mostrar
+// el autor real (avatar + nickname) cuando el viaje es compartido. Los
+// entries v3 sin user_id se renderean con fallback "Tú" (single-user demo).
+const JOURNAL_SCHEMA = 4;
 
 // Mayo 2026: ahora el journal también es review system del viajero.
 // "trip" = paisaje / momento; "food" = comida (con review opcional);
@@ -50,7 +60,14 @@ type EntryCategory = "trip" | "food" | "attraction" | "stay";
 interface Comment {
   id: string;
   ts: number;
+  /** Display name capturado en el momento del post — fallback si no hay user_id. */
   author: string;
+  /**
+   * Supabase auth user id si el comment fue posteado por un user logueado.
+   * Null para comments de demo / legacy localStorage. El render usa esto para
+   * resolver el avatar/nickname actual del autor (community / shared trips).
+   */
+  user_id: string | null;
   body: string;
 }
 
@@ -72,10 +89,19 @@ interface JournalEntry {
   price_level?: 1 | 2 | 3 | 4;
   /** Nombre del lugar — restaurante / atracción / hotel */
   place_name?: string;
+  /**
+   * v4: Supabase auth user id del autor del entry (la foto). Null si fue
+   * subida en demo mode. Usado para mostrar avatar + nickname del posteador.
+   * TODO[migration]: si esta columna se persiste en journal_entries de
+   * Supabase, debería agregarse en una migration server-side. Por ahora
+   * vive solo en localStorage.
+   */
+  user_id?: string | null;
 }
 
 // Schema migration: v0/v1 entries didn't have category/liked/comments/place.
-// v2 → v3 agrega rating/price_level/place_name. Backfill seguro.
+// v2 → v3 agrega rating/price_level/place_name. v3 → v4 agrega user_id a
+// entries y comments. Backfill: user_id = null (legacy single-user).
 function migrateJournal(data: unknown): JournalEntry[] | null {
   if (!Array.isArray(data)) return null;
   return (data as Partial<JournalEntry>[]).map((e) => ({
@@ -88,10 +114,19 @@ function migrateJournal(data: unknown): JournalEntry[] | null {
     lon: e.lon,
     place: e.place,
     liked: (e.liked as boolean) ?? false,
-    comments: Array.isArray(e.comments) ? (e.comments as Comment[]) : [],
+    comments: Array.isArray(e.comments)
+      ? (e.comments as Partial<Comment>[]).map((c) => ({
+          id: c.id as string,
+          ts: (c.ts as number) ?? Date.now(),
+          author: (c.author as string) ?? "Tú",
+          user_id: (c.user_id as string | null | undefined) ?? null,
+          body: (c.body as string) ?? "",
+        }))
+      : [],
     rating: e.rating,
     price_level: e.price_level as 1 | 2 | 3 | 4 | undefined,
     place_name: e.place_name,
+    user_id: (e.user_id as string | null | undefined) ?? null,
   }));
 }
 
@@ -139,8 +174,8 @@ async function reverseGeocode(lat: number, lon: number): Promise<string | null> 
 
 export default function JournalPage() {
   const { data: trip } = useActiveTrip();
-  const { client, mode } = useSupabase();
-  const { formatDate, t } = useI18n();
+  const { client, mode, user } = useSupabase();
+  const { formatDate, t, locale } = useI18n();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [openEntry, setOpenEntry] = useState<JournalEntry | null>(null);
@@ -148,19 +183,13 @@ export default function JournalPage() {
   const [nativeAvail, setNativeAvail] = useState(false);
   const [newCategory, setNewCategory] = useState<EntryCategory>("trip");
   const [commentDraft, setCommentDraft] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { isNative().then(setNativeAvail); }, []);
+  // user_id viene del SupabaseProvider — null en demo/unconfigured.
+  const userId = user?.id ?? null;
 
-  // Capturar user_id para remote sync
-  useEffect(() => {
-    if (mode !== "online" || !client) return;
-    client.auth.getUser().then(({ data }) => {
-      if (data.user) setUserId(data.user.id);
-    });
-  }, [client, mode]);
+  useEffect(() => { isNative().then(setNativeAvail); }, []);
 
   useEffect(() => {
     if (!trip) return;
@@ -188,6 +217,22 @@ export default function JournalPage() {
   const filtered = useMemo(() => {
     return filter === "all" ? entries : entries.filter((e) => e.category === filter);
   }, [entries, filter]);
+
+  // Recolectamos todos los user_id distintos de entries + comments para hacer
+  // un único batch lookup contra la tabla profiles. El hook ordena/dedupea
+  // internamente, así que pasar duplicados está bien — igual filtramos el
+  // current user (sus datos vienen de auth) para no inflar la query.
+  const authorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of entries) {
+      if (e.user_id && e.user_id !== userId) ids.add(e.user_id);
+      for (const c of e.comments) {
+        if (c.user_id && c.user_id !== userId) ids.add(c.user_id);
+      }
+    }
+    return Array.from(ids);
+  }, [entries, userId]);
+  const { data: profilesMap } = useProfilesBatch(authorIds);
 
   // Paginación: mostrar 15 fotos a la vez. "Cargar más" suma 15.
   // En lugar de virtualización full (overkill para journals de viaje típicos < 200 entries),
@@ -226,6 +271,10 @@ export default function JournalPage() {
       lon: loc?.lng,
       liked: false,
       comments: [],
+      // user_id null en demo (no hay sesión). En online se llena con el id
+      // del User actual para que el render de FeedCard muestre avatar + nick
+      // del posteador real (community / shared trips).
+      user_id: userId,
     };
 
     // Reverse geocode si tenemos coords (no bloquea: rellena después)
@@ -245,7 +294,7 @@ export default function JournalPage() {
     saveEntries(trip.id, next);
     haptic("medium");
     toast(`${category === "food" ? t.journal.foodie : "Foto"} ${t.journal.addedToDiary}`, "success");
-  }, [trip, entries]);
+  }, [trip, entries, userId, t.journal.addedToDiary, t.journal.foodie]);
 
   const handleFile = useCallback(async (file: File | null, category: EntryCategory) => {
     if (!file) return;
@@ -258,7 +307,11 @@ export default function JournalPage() {
 
   const handleCamera = useCallback(async (category: EntryCategory) => {
     haptic("light");
-    const photo = await capturePhoto({ source: "camera" });
+    // El journal/diario es tipo blog/Polarsteps: las fotos pueden ir al libro
+    // impreso. Capturamos en alta calidad (quality 100, sin recompresión visible)
+    // a costa de más bytes en IndexedDB. Decisión consciente del bucle de mayo
+    // 2026 — el user pidió "fotos en alta, tipo blog".
+    const photo = await capturePhoto({ source: "camera", highQuality: true });
     if (photo?.dataUrl) {
       const r = await fetch(photo.dataUrl);
       const b = await r.blob();
@@ -312,10 +365,17 @@ export default function JournalPage() {
 
   const addComment = useCallback((entry: JournalEntry, body: string) => {
     if (!trip || !body.trim()) return;
+    // Capturamos el display name del user real (o "Tú" si demo). El comment
+    // persiste `author` como snapshot del momento del post — esto sigue siendo
+    // útil aunque el user después cambie nickname o el viaje quede shared. El
+    // render usa `user_id` para resolver el avatar actual vía profile lookup
+    // (cuando Agent B aterrice el batch hook); si no, cae al snapshot.
+    const authorName = user ? displayNameForUser(user, t.journal.feed.you) : t.journal.feed.you;
     const comment: Comment = {
       id: crypto.randomUUID(),
       ts: Date.now(),
-      author: "Tú",
+      author: authorName,
+      user_id: userId,
       body: body.trim(),
     };
     const updatedEntry = { ...entry, comments: [...entry.comments, comment] };
@@ -331,7 +391,7 @@ export default function JournalPage() {
         { id: comment.id, body: comment.body, ts: comment.ts },
       );
     }
-  }, [trip, entries, mode, client, userId]);
+  }, [trip, entries, mode, client, userId, user, t.journal.feed.you]);
 
   /**
    * Actualizá los campos de review (rating, price_level, place_name, category).
@@ -484,6 +544,8 @@ export default function JournalPage() {
                 onOpen={() => setOpenEntry(e)}
                 onLike={() => toggleLike(e)}
                 formatDate={formatDate}
+                author={resolveAuthor(e.user_id ?? null, undefined, user, profilesMap)}
+                locale={locale}
               />
             </div>
           ))}
@@ -674,29 +736,30 @@ export default function JournalPage() {
               </p>
               {openEntry.comments.length > 0 ? (
                 <div className="space-y-2 mb-2">
-                  {openEntry.comments.map((c) => (
-                    <div key={c.id} className="ios-card p-3 group">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-[12px] font-semibold">{c.author}</p>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(c.ts).toLocaleString("es-AR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            day: "numeric",
-                            month: "short",
-                          })}
-                        </span>
+                  {openEntry.comments.map((c) => {
+                    const commentAuthor = resolveAuthor(c.user_id ?? null, c.author, user, profilesMap);
+                    return (
+                      <div key={c.id} className="ios-card p-3 group flex gap-2.5">
+                        <Avatar author={commentAuthor} size={32} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="text-[12px] font-semibold truncate">{commentAuthor.display_name}</p>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {formatAgo(c.ts, locale)}
+                            </span>
+                          </div>
+                          <p className="text-[13px] leading-snug mt-0.5 whitespace-pre-wrap break-words">{c.body}</p>
+                          <button
+                            onClick={() => deleteComment(openEntry, c.id)}
+                            className="opacity-0 group-hover:opacity-100 mt-1 text-[11px] text-muted-foreground hover:text-destructive transition-opacity"
+                            aria-label="Eliminar comentario"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[13px] leading-snug mt-1">{c.body}</p>
-                      <button
-                        onClick={() => deleteComment(openEntry, c.id)}
-                        className="opacity-0 group-hover:opacity-100 mt-1.5 text-[11px] text-muted-foreground hover:text-destructive transition-opacity"
-                        aria-label="Eliminar comentario"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-[12px] text-muted-foreground italic mb-2">Sin comentarios todavía.</p>
@@ -793,40 +856,52 @@ function FeedCard({
   onOpen,
   onLike,
   formatDate,
+  author,
+  locale,
 }: {
   entry: JournalEntry;
   thumb?: string;
   onOpen: () => void;
   onLike: () => void;
   formatDate: (d: string, s?: "short" | "long" | "iso") => string;
+  author: JournalAuthor;
+  locale: "es" | "en";
 }) {
   const { t } = useI18n();
   const date = formatDate(new Date(entry.ts).toISOString().slice(0, 10), "long");
-  const time = new Date(entry.ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const ago = formatAgo(entry.ts, locale);
 
   return (
     <article className="ios-card overflow-hidden">
-      {/* Header: category + date + place */}
-      <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+      {/* Header blog-style: avatar del autor + nick + "hace Xh" + chip categoría */}
+      <div className="px-4 pt-3 pb-2 flex items-center gap-2.5">
+        <Avatar author={author} size={40} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                entry.category === "food" ? "tampu-icon tampu-icon-canela" : "tampu-icon tampu-icon-indigo"
-              }`}
-            >
-              {entry.category === "food" ? <Utensils className="w-4 h-4" /> : <Plane className="w-4 h-4" />}
-            </span>
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold leading-tight truncate">
-                {entry.place || (entry.category === "food" ? t.journal.foodie : t.journal.photoMoment)}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {date} · {time}
-              </p>
-            </div>
-          </div>
+          <p className="text-[13.5px] font-semibold leading-tight truncate">
+            {author.display_name}
+          </p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {ago}
+            {entry.place && (
+              <>
+                {" · "}
+                <span className="inline-flex items-center gap-0.5">
+                  <MapPin className="w-3 h-3 inline" aria-hidden />
+                  {entry.place}
+                </span>
+              </>
+            )}
+            <span className="sr-only"> · {date}</span>
+          </p>
         </div>
+        <span
+          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+            entry.category === "food" ? "tampu-icon tampu-icon-canela" : "tampu-icon tampu-icon-indigo"
+          }`}
+          aria-label={entry.category === "food" ? t.journal.foodie : t.journal.photoMoment}
+        >
+          {entry.category === "food" ? <Utensils className="w-4 h-4" /> : <Plane className="w-4 h-4" />}
+        </span>
       </div>
 
       {/* Image (tap → opens detail) */}
@@ -883,5 +958,51 @@ function FeedCard({
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * <Avatar /> — círculo con avatar_url, o fallback con la inicial del nick
+ * sobre un fondo coloreado deterministicamente (hash del display_name).
+ *
+ * `size` en px (32 para comments, 40 para feed header).
+ */
+function Avatar({ author, size }: { author: JournalAuthor; size: number }) {
+  const px = `${size}px`;
+  // Hue determinístico por nombre — mismo user siempre tiene el mismo color
+  // de fallback, así el avatar "se reconoce" en el feed.
+  const hue = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < author.display_name.length; i++) {
+      h = (h * 31 + author.display_name.charCodeAt(i)) >>> 0;
+    }
+    return h % 360;
+  }, [author.display_name]);
+
+  if (author.avatar_url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={author.avatar_url}
+        alt={author.display_name}
+        style={{ width: px, height: px }}
+        className="rounded-full object-cover shrink-0 border border-border/40"
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: px,
+        height: px,
+        backgroundColor: `hsl(${hue}, 55%, 78%)`,
+        color: `hsl(${hue}, 60%, 25%)`,
+        fontSize: Math.round(size * 0.42),
+      }}
+      className="rounded-full flex items-center justify-center font-bold shrink-0 select-none"
+      aria-label={author.display_name}
+    >
+      {author.initial}
+    </div>
   );
 }

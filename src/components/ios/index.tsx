@@ -86,6 +86,9 @@ export const Pressable = React.forwardRef<HTMLButtonElement | HTMLAnchorElement,
 );
 
 // ─── LARGE TITLE HEADER (iOS HIG primary pattern) ───
+// En mobile (<768px) el `action` se apila DEBAJO del title para que chips múltiples
+// (IA/iCal/PDF/Compartir + presence/collab) no se pisen con el title. En md+ vuelve a
+// side-by-side. `action` envuelve en flex-wrap por si el caller pasa varios chips.
 export function LargeTitle({
   eyebrow, title, serif = false, action,
 }: { eyebrow?: string; title: string; serif?: boolean; action?: React.ReactNode }) {
@@ -96,9 +99,9 @@ export function LargeTitle({
           {eyebrow}
         </p>
       )}
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between md:gap-3">
         <h1 className={cn(serif ? "title-large-serif" : "title-large", "min-w-0")}>{title}</h1>
-        {action && <div className="shrink-0 pb-1">{action}</div>}
+        {action && <div className="flex flex-wrap gap-1.5 md:shrink-0 md:pb-1 md:justify-end">{action}</div>}
       </div>
     </header>
   );

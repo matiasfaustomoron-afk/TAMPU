@@ -124,7 +124,7 @@ export default function ItineraryPage() {
         title="Tu viaje"
         serif
         action={
-          <div className="flex flex-wrap gap-1.5 justify-end">
+          <>
             <TripPresence tripId={trip.id} />
             <CollabIndicator tripId={trip.id} />
             <button
@@ -196,7 +196,7 @@ export default function ItineraryPage() {
             >
               <Share2 className="w-3.5 h-3.5" aria-hidden="true" /> Compartir
             </button>
-          </div>
+          </>
         }
       />
 

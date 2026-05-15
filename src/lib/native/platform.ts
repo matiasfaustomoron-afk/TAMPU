@@ -156,12 +156,31 @@ export interface CameraResult {
   format: string;
 }
 
-export async function capturePhoto(opts?: { source?: "camera" | "photos"; quality?: number }): Promise<CameraResult | null> {
+/**
+ * Captura una foto con la cámara nativa.
+ *
+ * Quality knobs (mayo 2026 — pedido del user "blog tipo Polarsteps, fotos en alta"):
+ *  - Default ahora es 92 (antes 80). Para journals/blog la pérdida visible de
+ *    JPEG quality<90 mata el feel "fotos lindas que querés imprimir".
+ *  - `highQuality: true` fuerza 100 (sin recompresión visible). Útil para
+ *    journal entries que pueden ir al libro impreso.
+ *  - `quality` numérico sigue siendo el override final (1-100).
+ *
+ * Note: el blob/dataUrl se persiste tal cual en IndexedDB / Supabase Storage.
+ * No hacemos resize ni segunda pasada de compresión client-side — mantenemos
+ * el original de Camera para no degradar.
+ */
+export async function capturePhoto(opts?: {
+  source?: "camera" | "photos";
+  quality?: number;
+  highQuality?: boolean;
+}): Promise<CameraResult | null> {
   if (!(await isNative())) return null; // web caller should use <input type=file capture>
   try {
     const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+    const quality = opts?.quality ?? (opts?.highQuality ? 100 : 92);
     const photo = await Camera.getPhoto({
-      quality: opts?.quality ?? 80,
+      quality,
       allowEditing: false,
       resultType: CameraResultType.DataUrl,
       source: opts?.source === "photos" ? CameraSource.Photos : CameraSource.Prompt,

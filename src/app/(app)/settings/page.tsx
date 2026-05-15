@@ -28,7 +28,8 @@ import { useTampuPlus, invalidateTampuPlusCache } from "@/lib/billing/use-tampu-
 import { hasPasscode, isUnlocked, lock as lockApp, onLockChange } from "@/lib/crypto/passcode";
 import { countLegacyPlainVaultBlobs, migrateLegacyVaultToEncrypted } from "@/lib/vault/storage";
 import Link from "next/link";
-import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown, Heart, MessageCircle, Share2 } from "lucide-react";
+import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown, Heart, MessageCircle, Share2, User } from "lucide-react";
+import { useMyProfile, useUpdateMyProfile, isNicknameAvailable } from "@/lib/hooks/use-profile";
 import { useRef } from "react";
 import { downloadBackup, importBackup } from "@/lib/backup";
 import { getBriefConfig, setBriefConfig, type DailyBriefConfig } from "@/lib/daily-brief";
@@ -54,6 +55,88 @@ export default function SettingsPage() {
   const { data: documents } = useDocuments(trip?.id);
   const { data: budget } = useBudgetSummary();
   const [pdfBusy, setPdfBusy] = useState(false);
+
+  // ─── Tu perfil (Iter 7+ — community: nickname/avatar/bio) ────────────
+  // El profile completo (con email/timezone/preferences) viene de Supabase.
+  // En modo demo no hay persistencia; renderizamos los campos deshabilitados
+  // con un info-banner. La mutation invalida cache automáticamente.
+  const { data: myProfile, loading: profileLoading } = useMyProfile();
+  const updateProfile = useUpdateMyProfile();
+  const [profileForm, setProfileForm] = useState<{
+    nickname: string;
+    avatar_url: string;
+    bio: string;
+    full_name: string;
+    share_name: boolean;
+  }>({ nickname: "", avatar_url: "", bio: "", full_name: "", share_name: false });
+  const [nicknameStatus, setNicknameStatus] = useState<
+    "idle" | "checking" | "available" | "taken" | "invalid"
+  >("idle");
+
+  // Hidratamos el form cuando llega el profile del server (una vez).
+  useEffect(() => {
+    if (!myProfile) return;
+    setProfileForm({
+      nickname: myProfile.nickname ?? "",
+      avatar_url: myProfile.avatar_url ?? "",
+      bio: myProfile.bio ?? "",
+      full_name: myProfile.full_name ?? "",
+      share_name: !!myProfile.share_name,
+    });
+  }, [myProfile]);
+
+  // Debounce check de nickname para no spamear DB en cada keystroke.
+  useEffect(() => {
+    if (!supabaseClient) return;
+    const candidate = profileForm.nickname.trim();
+    if (candidate.length === 0 || candidate === (myProfile?.nickname ?? "")) {
+      setNicknameStatus("idle");
+      return;
+    }
+    // Validación local antes del round-trip.
+    if (!/^[a-z0-9_]{2,24}$/i.test(candidate)) {
+      setNicknameStatus("invalid");
+      return;
+    }
+    setNicknameStatus("checking");
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const ok = await isNicknameAvailable(supabaseClient, candidate, user?.id);
+      if (cancelled) return;
+      setNicknameStatus(ok ? "available" : "taken");
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [profileForm.nickname, supabaseClient, user?.id, myProfile?.nickname]);
+
+  const handleSaveProfile = async () => {
+    if (!user?.id || mode !== "online") return;
+    const patch = {
+      nickname: profileForm.nickname.trim() || null,
+      avatar_url: profileForm.avatar_url.trim() || null,
+      bio: profileForm.bio.trim() || null,
+      full_name: profileForm.full_name.trim() || null,
+      share_name: profileForm.share_name,
+    };
+    try {
+      const res = await updateProfile.mutateAsync(patch);
+      if (!res.ok) {
+        if (res.error === "nickname_taken") {
+          toast(t.settings.profile.nicknameTaken, "error");
+        } else if (res.error === "nickname_invalid") {
+          toast(t.settings.profile.nicknameInvalid, "error");
+        } else {
+          toast(`${t.settings.profile.saveError}: ${res.error ?? "unknown"}`, "error");
+        }
+        return;
+      }
+      toast(t.settings.profile.saved, "success");
+    } catch (err) {
+      toast(`${t.settings.profile.saveError}: ${(err as Error).message}`, "error");
+    }
+  };
 
   // ─── Compartir mi viaje (recap_public toggle, Iter 6) ────────────────
   // El trip viene de useActiveTrip() que ahora incluye `recap_public` en el
@@ -448,6 +531,175 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader title={t.settings.title} subtitle={t.settings.configuration} />
+
+      {/* ─── Tu perfil (Iter 7+ community) ─────────────────────────────── */}
+      {/* Sección al top para que el user encuentre rápido cómo cambiar nick/  */}
+      {/* avatar/bio — son los campos que más impactan UX del journal+feed.    */}
+      <Card id="profile" className="border-l-4 border-l-primary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="w-4 h-4" />
+            {t.settings.profile.title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            {t.settings.profile.subtitle}
+          </p>
+
+          {mode !== "online" && (
+            <p className="text-[11px] text-warning">
+              {t.settings.demoDesc}
+            </p>
+          )}
+
+          {/* Avatar preview + URL field */}
+          <div className="flex items-start gap-3">
+            {profileForm.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profileForm.avatar_url}
+                alt={profileForm.nickname || "avatar"}
+                className="w-12 h-12 rounded-full object-cover bg-muted shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="w-5 h-5 text-muted-foreground" />
+              </div>
+            )}
+            <div className="flex-1 space-y-1">
+              <label className="text-[10px] uppercase text-muted-foreground">
+                {t.settings.profile.avatarUrl}
+              </label>
+              <Input
+                type="url"
+                value={profileForm.avatar_url}
+                onChange={(e) => setProfileForm((p) => ({ ...p, avatar_url: e.target.value }))}
+                placeholder="https://…"
+                disabled={mode !== "online" || profileLoading}
+                className="font-mono text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {t.settings.profile.avatarUrlHint}
+              </p>
+            </div>
+          </div>
+
+          {/* Nickname */}
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase text-muted-foreground">
+              {t.settings.profile.nickname}
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">@</span>
+              <Input
+                type="text"
+                value={profileForm.nickname}
+                onChange={(e) => setProfileForm((p) => ({ ...p, nickname: e.target.value }))}
+                placeholder="matias"
+                disabled={mode !== "online" || profileLoading}
+                className="font-mono pl-7"
+                maxLength={24}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] text-muted-foreground">
+                {t.settings.profile.nicknameHint}
+              </p>
+              {nicknameStatus === "checking" && (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />…
+                </span>
+              )}
+              {nicknameStatus === "available" && (
+                <span className="text-[10px] text-success flex items-center gap-1">
+                  <Check className="w-2.5 h-2.5" />{t.settings.profile.nicknameAvailable}
+                </span>
+              )}
+              {nicknameStatus === "taken" && (
+                <span className="text-[10px] text-destructive">
+                  {t.settings.profile.nicknameTaken}
+                </span>
+              )}
+              {nicknameStatus === "invalid" && (
+                <span className="text-[10px] text-destructive">
+                  {t.settings.profile.nicknameInvalid}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Bio */}
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase text-muted-foreground">
+              {t.settings.profile.bio}
+            </label>
+            <textarea
+              value={profileForm.bio}
+              onChange={(e) => setProfileForm((p) => ({ ...p, bio: e.target.value.slice(0, 280) }))}
+              placeholder=""
+              disabled={mode !== "online" || profileLoading}
+              maxLength={280}
+              rows={3}
+              className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-y disabled:opacity-60"
+            />
+            <div className="flex justify-between">
+              <p className="text-[10px] text-muted-foreground">{t.settings.profile.bioHint}</p>
+              <p className="text-[10px] text-muted-foreground tabular-nums">
+                {profileForm.bio.length}/280
+              </p>
+            </div>
+          </div>
+
+          {/* Full name (mostrar nombre real toggle) */}
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase text-muted-foreground">
+              {t.settings.profile.fullName}
+            </label>
+            <Input
+              type="text"
+              value={profileForm.full_name}
+              onChange={(e) => setProfileForm((p) => ({ ...p, full_name: e.target.value }))}
+              disabled={mode !== "online" || profileLoading}
+            />
+          </div>
+
+          <label className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 cursor-pointer">
+            <div>
+              <p className="text-sm font-medium">{t.settings.profile.shareName}</p>
+              <p className="text-[10px] text-muted-foreground">{t.settings.profile.shareNameHint}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={profileForm.share_name}
+              onChange={(e) => setProfileForm((p) => ({ ...p, share_name: e.target.checked }))}
+              disabled={mode !== "online" || profileLoading}
+              className="w-5 h-5 shrink-0"
+              aria-label={t.settings.profile.shareName}
+            />
+          </label>
+
+          <Button
+            onClick={handleSaveProfile}
+            disabled={
+              mode !== "online" ||
+              profileLoading ||
+              updateProfile.isPending ||
+              nicknameStatus === "taken" ||
+              nicknameStatus === "invalid" ||
+              nicknameStatus === "checking"
+            }
+            className="gap-1"
+          >
+            {updateProfile.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" />{t.settings.profile.saving}</>
+            ) : (
+              <><Check className="w-4 h-4" />{t.settings.profile.save}</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Language selector */}
       <Card>
