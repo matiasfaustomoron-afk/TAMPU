@@ -80,51 +80,72 @@ export default function InboxPage() {
 
   const commitEntry = useCallback(async (entry: EmailInEntry) => {
     if (!trip) return;
+    // ─── Partial commit (iter 4) ────────────────────────────────────────
+    // Antes: si una reserva fallaba, el for await await ya había escrito las
+    // previas pero el entry quedaba en "parsed" (sin marcar committed). Ahora
+    // separamos successes/failures y persistimos status="partial" cuando hay
+    // mixed outcome, así el user no re-importa duplicados.
     const created: string[] = [];
+    let failures = 0;
     for (const b of entry.parsed_bookings) {
-      const res = await addReservation({
-        trip_id: trip.id,
-        type: b.type as ReservationType,
-        criticality: "important" as Criticality,
-        provider: b.provider || "Sin proveedor",
-        city_id: null,
-        city_name: b.city_name,
-        description: b.description || `${b.type} · ${b.provider}`,
-        purchase_date: null,
-        use_date: b.use_date,
-        use_end_date: b.use_end_date,
-        payment_deadline: b.payment_deadline,
-        original_amount: b.original_amount || 0,
-        original_currency: b.original_currency || trip.base_currency,
-        exchange_rate: 1,
-        base_amount: b.original_amount || 0,
-        status: (b.status || "pending") as ReservationStatus,
-        confirmation_received: b.status === "confirmed" || b.status === "paid",
-        locator: b.locator,
-        link: null,
-        contact: b.contact,
-        cancellation_policy: b.cancellation_policy,
-        is_cancellable: b.is_cancellable ?? false,
-        notes: b.notes || `Importado desde ${entry.from_address}`,
-      });
-      if (res?.id) created.push(res.id);
+      try {
+        const res = await addReservation({
+          trip_id: trip.id,
+          type: b.type as ReservationType,
+          criticality: "important" as Criticality,
+          provider: b.provider || "Sin proveedor",
+          city_id: null,
+          city_name: b.city_name,
+          description: b.description || `${b.type} · ${b.provider}`,
+          purchase_date: null,
+          use_date: b.use_date,
+          use_end_date: b.use_end_date,
+          payment_deadline: b.payment_deadline,
+          original_amount: b.original_amount || 0,
+          original_currency: b.original_currency || trip.base_currency,
+          exchange_rate: 1,
+          base_amount: b.original_amount || 0,
+          status: (b.status || "pending") as ReservationStatus,
+          confirmation_received: b.status === "confirmed" || b.status === "paid",
+          locator: b.locator,
+          link: null,
+          contact: b.contact,
+          cancellation_policy: b.cancellation_policy,
+          is_cancellable: b.is_cancellable ?? false,
+          notes: b.notes || `Importado desde ${entry.from_address}`,
+        });
+        if (res?.id) created.push(res.id);
+        else failures++;
+      } catch (e) {
+        console.warn("[inbox] booking insert failed", e);
+        failures++;
+      }
     }
 
-    // Mark committed
-    if (mode === "online" && client) {
-      await client.from("email_in_entries").update({
-        status: "committed",
-        committed_reservation_ids: created,
-        committed_at: new Date().toISOString(),
-      }).eq("id", entry.id);
-    } else {
-      updateLocalInbox(trip.id, entry.id, {
-        status: "committed",
-        committed_reservation_ids: created,
-      });
+    // Mark committed/partial según outcome
+    if (created.length > 0) {
+      const status: EmailInEntry["status"] = failures > 0 ? "partial" : "committed";
+      if (mode === "online" && client) {
+        await client.from("email_in_entries").update({
+          status,
+          committed_reservation_ids: created,
+          committed_at: new Date().toISOString(),
+        }).eq("id", entry.id);
+      } else {
+        updateLocalInbox(trip.id, entry.id, {
+          status,
+          committed_reservation_ids: created,
+        });
+      }
+      haptic("medium");
+      toast(
+        `${created.length} reserva${created.length === 1 ? "" : "s"} importada${created.length === 1 ? "" : "s"}${failures > 0 ? ` (${failures} fallaron)` : ""}`,
+        failures > 0 ? "warn" : "success",
+      );
+    } else if (failures > 0) {
+      toast(`No se pudo importar ninguna reserva (${failures} fallaron)`, "error");
     }
-    haptic("medium");
-    toast(`${created.length} reserva${created.length === 1 ? "" : "s"} importada${created.length === 1 ? "" : "s"}`, "success");
+
     refetch();
   }, [trip, addReservation, client, mode, refetch]);
 
@@ -149,7 +170,7 @@ export default function InboxPage() {
   }
 
   const active = entries.filter(e => e.status === "parsed" || e.status === "failed" || e.status === "pending");
-  const archived = entries.filter(e => e.status === "committed" || e.status === "dismissed");
+  const archived = entries.filter(e => e.status === "committed" || e.status === "dismissed" || e.status === "partial");
 
   return (
     <div className="animate-fade-in">
@@ -319,6 +340,7 @@ function EntryRow({
 function StatusPill({ status, count }: { status: EmailInEntry["status"]; count: number }) {
   if (status === "parsed") return <Pill tone="ok">{count}</Pill>;
   if (status === "committed") return <Pill tone="primary"><Sparkles className="w-2.5 h-2.5 inline mr-0.5" /> Importado</Pill>;
+  if (status === "partial") return <Pill tone="warn">Parcial</Pill>;
   if (status === "failed") return <Pill tone="warn">Falló</Pill>;
   if (status === "dismissed") return <Pill tone="neutral">Descartado</Pill>;
   return <Pill tone="neutral">Pendiente</Pill>;

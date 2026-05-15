@@ -5,6 +5,7 @@ import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 /**
  * Email confirmation parser — v2 multibooking + multilingüe.
@@ -148,36 +149,11 @@ async function llmParse(req: NextRequest, text: string): Promise<LLMParseEnvelop
   });
   if (!rich) return null;
 
-  try {
-    const clean = rich.text
-      .replace(/^```(json)?\s*/i, "")
-      .replace(/```\s*$/, "")
-      .trim();
-    const parsed = JSON.parse(clean) as LLMResponse;
-    // Defensive: garantizar shape
-    if (!Array.isArray(parsed.bookings)) {
-      return {
-        data: null,
-        degraded: { reason: "json_parse_failed" },
-        provider: rich.provider,
-        model: rich.model,
-        inputTokens: rich.usage.inputTokens,
-        outputTokens: rich.usage.outputTokens,
-      };
-    }
-    return {
-      data: {
-        bookings: parsed.bookings,
-        language: parsed.language || "unknown",
-        carrier_hint: parsed.carrier_hint || null,
-      },
-      provider: rich.provider,
-      model: rich.model,
-      inputTokens: rich.usage.inputTokens,
-      outputTokens: rich.usage.outputTokens,
-    };
-  } catch (err) {
-    console.warn("[parse-email-confirmation] LLM JSON parse failed:", err);
+  const parsed = extractJson<LLMResponse>(rich.text);
+  // Defensive: garantizar shape — falla si extractJson devolvió null O si
+  // bookings no es array (modelo puede haber devuelto JSON con shape distinto).
+  if (!parsed || !Array.isArray(parsed.bookings)) {
+    if (!parsed) console.warn("[parse-email-confirmation] LLM JSON parse failed");
     return {
       data: null,
       degraded: { reason: "json_parse_failed" },
@@ -187,6 +163,17 @@ async function llmParse(req: NextRequest, text: string): Promise<LLMParseEnvelop
       outputTokens: rich.usage.outputTokens,
     };
   }
+  return {
+    data: {
+      bookings: parsed.bookings,
+      language: parsed.language || "unknown",
+      carrier_hint: parsed.carrier_hint || null,
+    },
+    provider: rich.provider,
+    model: rich.model,
+    inputTokens: rich.usage.inputTokens,
+    outputTokens: rich.usage.outputTokens,
+  };
 }
 
 export async function POST(req: NextRequest) {

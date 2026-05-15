@@ -4,6 +4,7 @@ import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 // ─── Document classifier + OCR ───
 // Receives a base64-encoded image OR PDF, asks Claude (vision) to classify it
@@ -138,18 +139,8 @@ async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<Cla
       model: "sonnet",
     });
     if (!rich) return null;
-    try {
-      const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-      const parsed = JSON.parse(clean) as Omit<ClassifyResult, "source">;
-      return {
-        result: { ...parsed, source: "claude" },
-        provider: rich.provider,
-        model: rich.model,
-        inputTokens: rich.usage.inputTokens,
-        outputTokens: rich.usage.outputTokens,
-        source,
-      };
-    } catch {
+    const parsed = extractJson<Omit<ClassifyResult, "source">>(rich.text);
+    if (!parsed) {
       return {
         result: null,
         degraded: { reason: "json_parse_failed" },
@@ -160,6 +151,14 @@ async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<Cla
         source,
       };
     }
+    return {
+      result: { ...parsed, source: "claude" },
+      provider: rich.provider,
+      model: rich.model,
+      inputTokens: rich.usage.inputTokens,
+      outputTokens: rich.usage.outputTokens,
+      source,
+    };
   } catch (e) {
     console.error("[classify] LLM failed:", e);
     return null;

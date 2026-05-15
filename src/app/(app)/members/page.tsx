@@ -10,9 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { toast } from "@/components/ios/toast";
-import { useActiveTrip } from "@/lib/hooks/use-trip-data";
+import { useActiveTrip, useTripMembers } from "@/lib/hooks/use-trip-data";
+import { useTripRealtime } from "@/lib/hooks/use-trip-realtime";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { setActiveTrip } from "@/lib/data/trips";
+import { fetchPendingInvites } from "@/lib/data/members";
 import { track, EVENTS } from "@/lib/analytics";
 
 /**
@@ -57,9 +59,16 @@ function SharePageContent() {
   const { data: trip } = useActiveTrip();
   const { client, mode } = useSupabase();
   const router = useRouter();
-  const [members, setMembers] = useState<Member[]>([]);
+  // Members list: TanStack-managed. `useTripMembers` returns the native
+  // TanStack shape (data/isLoading/refetch). The legacy `Member[]` setState
+  // path queda eliminado — invalidaciones via mutations + realtime mantienen
+  // el cache fresco.
+  const { data: members = [], isLoading: membersLoading, refetch: refetchMembers } = useTripMembers(trip?.id);
+  // pendingForMe sigue siendo local porque la query es por email (no por
+  // tripId), no cabe en `useTripMembers`. Lo migramos al data layer
+  // (`fetchPendingInvites`) para que toda la lógica SQL viva en /lib/data.
   const [pendingForMe, setPendingForMe] = useState<PendingInvite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [pendingLoading, setPendingLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"editor" | "viewer">("editor");
@@ -80,36 +89,39 @@ function SharePageContent() {
     });
   }, [client]);
 
-  const refetch = useCallback(async () => {
-    if (!client || !trip) {
-      setLoading(false);
+  // Pending invites para MI email: refetch dedicado (no es scoped a un trip).
+  const refetchPending = useCallback(async () => {
+    if (!client || !me?.email) {
+      setPendingForMe([]);
+      setPendingLoading(false);
       return;
     }
-    setLoading(true);
+    setPendingLoading(true);
     try {
-      const [m, p] = await Promise.all([
-        client.from("trip_members").select("*").eq("trip_id", trip.id).order("invited_at"),
-        // Invitaciones para MI email en cualquier trip
-        me?.email
-          ? client
-              .from("trip_members")
-              .select("*, trip:trips(name,destination)")
-              .eq("invited_email", me.email.toLowerCase())
-              .eq("status", "pending")
-          : Promise.resolve({ data: [] as PendingInvite[] }),
-      ]);
-      setMembers((m.data as Member[]) || []);
-      setPendingForMe((p.data as PendingInvite[]) || []);
+      const data = await fetchPendingInvites(client, me.email);
+      setPendingForMe((data as PendingInvite[]) || []);
     } catch (err) {
-      console.error("[share] refetch failed:", err);
+      console.error("[share] pending invites fetch failed:", err);
     } finally {
-      setLoading(false);
+      setPendingLoading(false);
     }
-  }, [client, trip, me?.email]);
+  }, [client, me?.email]);
 
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    refetchPending();
+  }, [refetchPending]);
+
+  // Refetch unificado para los call sites (sendInvite/acceptInvite/etc.) —
+  // dispara ambas queries en paralelo, manteniendo el contrato anterior.
+  const refetch = useCallback(async () => {
+    await Promise.all([refetchMembers(), refetchPending()]);
+  }, [refetchMembers, refetchPending]);
+
+  // Auto-refresh cuando otro miembro acepta/se une: realtime dispara
+  // refetchMembers, que invalida la query y trae el nuevo estado.
+  useTripRealtime(trip?.id, { tripMembers: () => { void refetchMembers(); } });
+
+  const loading = membersLoading || pendingLoading;
 
   // Cuando la lista llega y el query param `invite` está, hacemos scroll a la
   // fila del miembro y la resaltamos con un ring. Solo dispara una vez por

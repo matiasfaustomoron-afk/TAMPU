@@ -11,6 +11,7 @@ import {
   useDocuments,
 } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
+import { plural } from "@/lib/i18n/plural";
 import { IOSFeatureCard, ProgressRing } from "@/components/ios";
 import { SyncIndicator } from "@/components/ios/sync-indicator";
 import { HeroParallax } from "@/components/ios/hero-parallax";
@@ -65,7 +66,7 @@ type NBA = {
 export default function TodayPage() {
   const { data: cc, loading } = useCommandCenter();
   const { data: trips, loading: loadingTrips } = useAllTrips();
-  const { formatDate } = useI18n();
+  const { formatDate, t, locale } = useI18n();
   const router = useRouter();
 
   // Count-up animation para el countdown — debe llamarse antes de los early returns
@@ -179,7 +180,7 @@ export default function TodayPage() {
       if (missing > 0) {
         return {
           kind: "preparation",
-          title: `Te faltan ${missing} cosas para estar listo`,
+          title: `Te faltan ${missing} ${plural(locale, missing, t.today.thingsLeft)} para estar listo`,
           subtitle: "Tareas críticas pendientes",
           href: "/tasks",
           ctaLabel: "Ver pendientes",
@@ -189,7 +190,7 @@ export default function TodayPage() {
     if (mode_info.days_until_start > 0) {
       return {
         kind: "countdown",
-        title: `Faltan ${mode_info.days_until_start} días`,
+        title: `Faltan ${mode_info.days_until_start} ${plural(locale, mode_info.days_until_start, t.today.daysLeft)}`,
         subtitle: `${trip.destination} te espera`,
         href: "/itinerary",
         ctaLabel: "Ver itinerario",
@@ -207,7 +208,7 @@ export default function TodayPage() {
     if (today_card.next_transport) {
       return {
         icon: <Bus className="w-5 h-5" />,
-        label: "Próximo traslado",
+        label: t.today.eyebrows.nextTransfer,
         title: today_card.next_transport,
         subtitle: today_card.city || undefined,
       };
@@ -215,7 +216,7 @@ export default function TodayPage() {
     if (today_card.accommodation) {
       return {
         icon: <Bed className="w-5 h-5" />,
-        label: "Dónde dormís",
+        label: t.today.eyebrows.whereSleep,
         title: today_card.accommodation,
         subtitle: today_card.city || undefined,
       };
@@ -278,7 +279,7 @@ export default function TodayPage() {
                 >
                   {daysUntilStart}
                 </span>
-                <span className="text-sm text-white mb-2 text-shadow-soft" style={{ opacity: 0.92 }}>días para salir</span>
+                <span className="text-sm text-white mb-2 text-shadow-soft" style={{ opacity: 0.92 }}>{plural(locale, mode_info.days_until_start, t.today.daysLeft)} para salir</span>
               </div>
             )}
           </IOSFeatureCard>
@@ -295,7 +296,7 @@ export default function TodayPage() {
       {/* ─── 2. NEXT BEST ACTION ─── */}
       {nba && (
         <section className="px-4 mt-3" aria-label="Próxima acción recomendada">
-          <p className="ios-eyebrow">Lo que importa ahora</p>
+          <p className="ios-eyebrow">{t.today.eyebrows.focus}</p>
           <Link href={nba.href} className="block">
             <div className="ios-card p-5 pressable">
               <div className="flex items-start gap-4">
@@ -372,7 +373,7 @@ export default function TodayPage() {
       {/* ─── 4. RIESGO CRÍTICO secundario (condicional, solo si existe otro tras el NBA) ─── */}
       {secondaryCritical && (
         <section className="px-4 mt-3">
-          <p className="ios-eyebrow">Atención</p>
+          <p className="ios-eyebrow">{t.today.eyebrows.attention}</p>
           <Link href="/alerts" className="block">
             <div className="ios-card p-4 pressable border-l-4 border-destructive">
               <div className="flex items-start gap-3">
@@ -393,12 +394,12 @@ export default function TodayPage() {
 
       {/* ─── 5. ACCESOS RÁPIDOS — 4 glyphs Tampu, sin lucide ─── */}
       <section className="px-4 mt-3" aria-label="Accesos rápidos">
-        <p className="ios-eyebrow">A un toque</p>
+        <p className="ios-eyebrow">{t.today.eyebrows.quickAccess}</p>
         <div className="grid grid-cols-4 gap-2">
-          <QuickChip href="/vault"     icon={<GlyphCartera   size={22} />}    label="Documentos"  accent="tampu-icon-terracota" />
-          <QuickChip href="/import"    icon={<Inbox className="w-5 h-5" />}   label="Importar" accent="tampu-icon-indigo"    />
-          <QuickChip href="/expenses"  icon={<GlyphDinero    size={22} />}    label="Gasto"    accent="tampu-icon-cobre"     />
-          <QuickChip href="/emergency" icon={<GlyphEmergencia size={22} />}   label="SOS"      accent="tampu-icon-carmin"    />
+          <QuickChip href="/vault"     icon={<GlyphCartera   size={22} />}    label={t.today.quickChips.documents} accent="tampu-icon-terracota" />
+          <QuickChip href="/import"    icon={<Inbox className="w-5 h-5" />}   label={t.today.quickChips.import}    accent="tampu-icon-indigo"    />
+          <QuickChip href="/expenses"  icon={<GlyphDinero    size={22} />}    label={t.today.quickChips.expense}   accent="tampu-icon-cobre"     />
+          <QuickChip href="/emergency" icon={<GlyphEmergencia size={22} />}   label={t.today.quickChips.sos}       accent="tampu-icon-carmin"    />
         </div>
       </section>
     </div>
@@ -453,6 +454,7 @@ function TodaySkeleton() {
 }
 
 function NoTripEmpty() {
+  const { t } = useI18n();
   return (
     <div className="px-6 py-24 text-center animate-fade-in">
       <div className="relative inline-block mb-6">
@@ -462,17 +464,17 @@ function NoTripEmpty() {
         </div>
       </div>
       <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-muted-foreground mb-2">
-        Empezá acá
+        {t.today.empty.eyebrow}
       </p>
-      <h2 className="font-serif text-5xl leading-tight">Tu próximo viaje</h2>
+      <h2 className="font-serif text-5xl leading-tight">{t.today.empty.title}</h2>
       <p className="text-base text-muted-foreground mt-4 max-w-sm mx-auto">
-        Creá tu primer viaje y desbloqueá itinerario, cartera de documentos, dinero y el asistente con IA.
+        {t.today.empty.description}
       </p>
       <Link
         href="/trips"
         className="mt-8 inline-flex items-center justify-center px-6 py-3 rounded-2xl text-sm font-semibold text-white shadow-md tampu-gradient-warm hover:brightness-110 hover:-translate-y-px transition-all pressable"
       >
-        Crear viaje
+        {t.today.empty.cta}
       </Link>
     </div>
   );

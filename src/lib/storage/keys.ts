@@ -25,6 +25,24 @@ export const LS_KEYS = {
   onboardingDone: "tampu_onboarding_done",
   /** Cache local de viajes para offline-first read. */
   tripsCache: "tampu_trips_cache",
+  // ─── Legacy `travel-os-*` keys ───
+  // Registradas para auditoría y limpieza-en-logout, pero los call sites
+  // todavía hardcodean el string. TODO: migration deferred a `tampu_*`
+  // namespace. Mantener los nombres viejos hasta que un sweep dedicado:
+  //   - vault page + boarding-passes widget lean `vaultDemo(tripId)`
+  //   - journal demo storage use `journalDemo(tripId)`
+  //   - AI key flows (settings) use `aiKey` / `aiKeyEncrypted`
+  //   - pinned views (saved-views provider) use `pinnedViews`
+  /** Demo vault attachments por trip (writeVersioned). TODO migrate. */
+  vaultDemo: (tripId: string) => `travel-os-vault-${tripId}`,
+  /** Demo journal entries por trip. TODO migrate. */
+  journalDemo: (tripId: string) => `travel-os-journal-${tripId}`,
+  /** Anthropic API key (plain, sin cifrar — legacy). TODO migrate al cifrado. */
+  aiKey: "travel-os-ai-key",
+  /** Anthropic API key cifrada con master password. TODO migrate. */
+  aiKeyEncrypted: "travel-os-ai-key-encrypted",
+  /** Saved-views / pinned dashboards. TODO migrate. */
+  pinnedViews: "travel-os-pinned-views",
 } as const;
 
 export type LSKey = (typeof LS_KEYS)[keyof typeof LS_KEYS];

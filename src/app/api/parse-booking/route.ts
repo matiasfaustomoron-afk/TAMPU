@@ -4,6 +4,7 @@ import { maskPII } from "@/lib/ai/pii-filter";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 // ─── Booking parser ───
 // Receives raw text from a confirmation email/SMS, extracts a Reservation candidate.
@@ -135,17 +136,8 @@ async function llmParse(
     model: "haiku",
   });
   if (!rich) return null;
-  try {
-    const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    const parsed = JSON.parse(clean) as ParsedBooking;
-    return {
-      parsed,
-      provider: rich.provider,
-      model: rich.model,
-      inputTokens: rich.usage.inputTokens,
-      outputTokens: rich.usage.outputTokens,
-    };
-  } catch {
+  const parsed = extractJson<ParsedBooking>(rich.text);
+  if (!parsed) {
     return {
       parsed: null,
       degraded: true,
@@ -156,6 +148,13 @@ async function llmParse(
       outputTokens: rich.usage.outputTokens,
     };
   }
+  return {
+    parsed,
+    provider: rich.provider,
+    model: rich.model,
+    inputTokens: rich.usage.inputTokens,
+    outputTokens: rich.usage.outputTokens,
+  };
 }
 
 export async function POST(req: NextRequest) {

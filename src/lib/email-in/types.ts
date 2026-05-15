@@ -9,9 +9,10 @@ import type { ParsedBooking } from "@/lib/parsing/email-parser";
  *  - "failed"  → el parser no encontró nada, o el LLM falló — el user puede revisar
  *  - "pending" → recibido pero todavía no procesado (raro)
  *  - "committed" → ya commiteado al trip, marcado para auditoría
+ *  - "partial" → algunas reservas se importaron, otras fallaron (iter 4)
  *  - "dismissed" → el user lo descartó
  */
-export type EmailInStatus = "pending" | "parsed" | "failed" | "committed" | "dismissed";
+export type EmailInStatus = "pending" | "parsed" | "failed" | "committed" | "partial" | "dismissed";
 
 export interface EmailInEntry {
   id: string;

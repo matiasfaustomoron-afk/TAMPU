@@ -25,6 +25,29 @@
 import { resolveDestinationPhoto } from "@/lib/photos/destination-resolver";
 import { buildAffiliateUrl, isPartnerActive, type Partner } from "@/lib/affiliates/config";
 import { withRetry } from "@/lib/ai/providers";
+import { extractJson } from "@/lib/ai/json-extractor";
+
+// ─── DEEP LINK WHITELIST (iter 4 hardening) ───────────────────────────────
+// Las suggestions del LLM pueden incluir `deep_link`. Sin sanitización, el
+// modelo puede inventar rutas (`/admin`, `/dashboard`) o injectar URLs
+// externas (`https://evil.com`). Validamos contra la lista REAL de routes
+// de la app y forzamos shape `/route` o `/route?query`.
+const KNOWN_ROUTES = [
+  "/vault", "/itinerary", "/cashflow", "/budget", "/expenses", "/reservations",
+  "/tasks", "/alerts", "/journal", "/inbox", "/import", "/settings", "/visas",
+  "/health", "/emergency", "/map", "/whatsapp", "/today", "/trips", "/members",
+  "/passcode", "/welcome", "/login",
+];
+
+function sanitizeDeepLink(link: string | null | undefined): string | null {
+  if (!link || typeof link !== "string") return null;
+  // Match /route o /route/subpath o /route?query=...
+  const m = link.match(/^(\/[a-z-]+(?:\/[a-z0-9-]+)*)(\?[a-z0-9=&_-]*)?$/);
+  if (!m) return null;
+  const baseRoute = m[1].split("/").slice(0, 2).join("/");
+  if (!KNOWN_ROUTES.includes(baseRoute)) return null;
+  return link;
+}
 
 export interface AgenticContext {
   trip_name: string;
@@ -587,18 +610,17 @@ export async function runAgenticAssistant(
 // ─── Backward-compat: si el modelo devolvió text en formato JSON legacy
 // con shape {answer, suggestions}, unwrappeamos para preservar consumidores.
 function tryUnwrapJsonShape(text: string): { answer: string; suggestions: AgenticResult["suggestions"] } | null {
-  const clean = text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-  if (!clean.startsWith("{")) return null;
-  try {
-    const parsed = JSON.parse(clean) as { answer?: string; suggestions?: AgenticResult["suggestions"] };
-    if (typeof parsed.answer === "string") {
-      return {
-        answer: parsed.answer,
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
-      };
-    }
-  } catch { /* not JSON, fall through */ }
-  return null;
+  const parsed = extractJson<{ answer?: string; suggestions?: AgenticResult["suggestions"] }>(text);
+  if (!parsed || typeof parsed.answer !== "string") return null;
+  const rawSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+  // Sanear cada deep_link contra el whitelist — si la ruta es inválida (o
+  // el modelo se inventó algo), eliminamos el campo en vez de droppear la
+  // suggestion entera.
+  const suggestions = rawSuggestions.map((s) => ({
+    ...s,
+    deep_link: sanitizeDeepLink(s.deep_link) ?? undefined,
+  }));
+  return { answer: parsed.answer, suggestions };
 }
 
 // ─── Suggestion extraction ────────────────────────────────────────────────

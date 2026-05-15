@@ -566,6 +566,63 @@ const es = {
     },
   },
 
+  // ─── TODAY (Iter 4) ───
+  // Strings para /today: eyebrows, quick-chips, plurales (días/cosas),
+  // empty state (NoTripEmpty) y quickStats card.
+  today: {
+    eyebrows: {
+      focus: "Lo que importa ahora",
+      attention: "Atención",
+      quickAccess: "A un toque",
+      nextTransfer: "Próximo traslado",
+      whereSleep: "Dónde dormís",
+    },
+    quickChips: {
+      documents: "Documentos",
+      import: "Importar",
+      expense: "Gasto",
+      sos: "SOS",
+    },
+    daysLeft: { one: "día", other: "días" },
+    thingsLeft: { one: "cosa", other: "cosas" },
+    empty: {
+      eyebrow: "Empezá acá",
+      title: "Tu próximo viaje",
+      description: "Creá tu primer viaje y desbloqueá todo lo del Command Center.",
+      cta: "Crear viaje",
+    },
+    quickStats: {
+      daysToTrip: "Días hasta el viaje",
+      flightsRemaining: "Vuelos restantes",
+      docsToReview: "Docs por revisar",
+      budget: "Presupuesto",
+      inProgress: "En curso",
+    },
+  },
+
+  // ─── CASHFLOW (Iter 4) ───
+  // Status chips + chart labels para /cashflow. Complementa command.cashflow.*
+  cashflow: {
+    status: "Estado",
+    pace: "Ritmo",
+    ok: "OK",
+    careful: "Cuidado",
+    excess: "Excede",
+    days: "Días",
+    payments: "Pagos",
+    dailySpend: "Gasto diario",
+    cumulativeVsBudget: "Acumulado vs presupuesto",
+    actual: "Real",
+    budget: "Presupuesto",
+    byDestination: "Por destino",
+    pctOfTotal: "% del total",
+    upcomingPayments: "Pagos próximos",
+    byWeek: "Por semana",
+    weekOf: "Semana del",
+    expenses: "gastos",
+    paymentsLower: "pagos",
+  },
+
   // ─── WELCOME ───
   // Reescritura mayo 2026 (auditor red-team): se elimina founder-data del
   // hero/CTA/cards. Antes el welcome forzaba un viaje Papúa+Seúl como

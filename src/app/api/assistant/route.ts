@@ -4,6 +4,7 @@ import { runAgenticAssistant, type AgenticContext } from "@/lib/ai/agentic";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { captureException } from "@/lib/observability/sentry";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 // `getProxyIdentifier` ahora vive en `src/lib/ai/proxy-identifier.ts` y es
 // compartido entre todos los endpoints AI (categorize-expense, parse-booking,
@@ -351,18 +352,16 @@ async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, questio
     model: rich.model,
   }).catch((e) => captureException(e, { tag: "assistant.record" }));
 
-  try {
-    const stripped = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    const parsed = JSON.parse(stripped) as { answer: string; suggestions: Suggestion[] };
-    return {
-      response: { source: "claude", answer: parsed.answer, suggestions: parsed.suggestions || [] },
-      provider: rich.provider,
-      model: rich.model,
-    };
-  } catch {
+  const parsed = extractJson<{ answer: string; suggestions: Suggestion[] }>(rich.text);
+  if (!parsed) {
     // JSON parse falló → caller decide qué hacer (cae a heuristic).
     return null;
   }
+  return {
+    response: { source: "claude", answer: parsed.answer, suggestions: parsed.suggestions || [] },
+    provider: rich.provider,
+    model: rich.model,
+  };
 }
 
 export async function POST(req: NextRequest) {

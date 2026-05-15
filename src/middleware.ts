@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   "/terms",
   "/welcome", // Landing — anon users tienen que verlo para signup
   "/share",   // Invite landing — anon users que llegan vía link de invitación
+  "/recap",   // Tampu Recap — página pública con og:image para share en WA/Twitter
 ];
 
 // API routes que son llamadas por sistemas externos (webhooks, cron) o
@@ -25,6 +26,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/curated-destinations", // Catálogo público read-only
   "/api/destination-photo",    // Cache público de fotos
   "/api/airport-info",         // Read público de aeropuertos
+  "/api/recap/",               // Recap OG image — público para crawlers (WhatsApp/Twitter)
   "/api/verify-turnstile",     // Llamado pre-auth (signup/setup)
 ];
 

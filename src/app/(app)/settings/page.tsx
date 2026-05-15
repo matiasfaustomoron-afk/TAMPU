@@ -14,6 +14,7 @@ import {
 import { generateTripSummaryPDF } from "@/lib/pdf/trip-summary";
 import { reportError } from "@/lib/utils/errors";
 import { useSupabase } from "@/lib/context/supabase-provider";
+import { useRouter } from "next/navigation";
 import { useI18n } from "@/i18n/provider";
 import { LOCALES, LOCALE_LABELS } from "@/i18n/config";
 import { resetStore } from "@/lib/demo/demo-store";
@@ -45,7 +46,8 @@ import { verifyTurnstileToken } from "@/lib/security/verify-turnstile";
 export default function SettingsPage() {
   const { t, locale, setLocale, formatCurrency } = useI18n();
   const { data: trip, loading } = useActiveTrip();
-  const { mode } = useSupabase();
+  const { mode, user } = useSupabase();
+  const router = useRouter();
   const { data: reservations } = useReservations(trip?.id);
   const { data: tripDays } = useTripDays(trip?.id);
   const { data: documents } = useDocuments(trip?.id);
@@ -58,6 +60,14 @@ export default function SettingsPage() {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   const handleStartCheckout = async () => {
+    // ─── Auth guard (iter 4) ──────────────────────────────────────────
+    // Stripe checkout requiere user_id server-side; en demo/anónimo no podemos
+    // attribuir la compra. Redirect al login con next= para volver acá tras
+    // autenticarse (anchor #tampu-plus scroll-into-view).
+    if (mode === "demo" || !user) {
+      router.push("/login?next=" + encodeURIComponent("/settings#tampu-plus"));
+      return;
+    }
     setCheckoutBusy(true);
     try {
       const res = await fetch("/api/checkout/create-session", {
@@ -363,11 +373,23 @@ export default function SettingsPage() {
     areTaskRemindersEnabled().then(v => queueMicrotask(() => setTaskReminders(v))).catch(() => {});
   }, []);
   const handleSaveKey = async () => {
-    // Verificar Turnstile antes de aceptar la key (anti-bot del paste flow)
-    const captcha = await verifyTurnstileToken(byokTurnstileToken);
-    if (!captcha.ok) {
-      toast("No pudimos verificar que sos humano. Reintentá el captcha.", "error");
-      return;
+    // ─── Turnstile fallback (iter 4) ────────────────────────────────────
+    // Si el env var NEXT_PUBLIC_TURNSTILE_SITE_KEY no está configurada (deploys
+    // self-hosted / preview), el widget no carga y nunca llega el token. Antes
+    // el botón quedaba siempre disabled. Ahora: si el widget no aplica (no env
+    // o demo mode), permitimos save igual con un info-toast.
+    const turnstileEnabled = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    if (turnstileEnabled && mode !== "demo") {
+      if (!byokTurnstileToken) {
+        toast("Verificación de seguridad opcional no disponible. Guardando igual.", "info");
+        // continuar sin verifyTurnstile
+      } else {
+        const captcha = await verifyTurnstileToken(byokTurnstileToken);
+        if (!captcha.ok) {
+          toast("No pudimos verificar que sos humano. Reintentá el captcha.", "error");
+          return;
+        }
+      }
     }
     setUserApiKey(apiKey);
     setKeyJustSaved(true);
@@ -856,7 +878,12 @@ export default function SettingsPage() {
                 </div>
                 <Button
                   onClick={handleSaveKey}
-                  disabled={!apiKey || !byokTurnstileToken || (apiKey === getUserApiKey() && !keyJustSaved)}
+                  disabled={
+                    !apiKey ||
+                    // Solo bloquear por token cuando Turnstile está realmente activo (env var + no demo)
+                    (!!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && mode !== "demo" && !byokTurnstileToken) ||
+                    (apiKey === getUserApiKey() && !keyJustSaved)
+                  }
                   className="gap-1"
                 >
                   {keyJustSaved ? <><Check className="w-4 h-4" />Guardado</> : "Guardar"}

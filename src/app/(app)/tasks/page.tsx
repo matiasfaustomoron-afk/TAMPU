@@ -8,20 +8,56 @@ import { useActiveTrip, useTasks, useMutations } from "@/lib/hooks/use-trip-data
 import { useI18n } from "@/i18n/provider";
 import { daysUntil } from "@/lib/utils/helpers";
 import { TASK_CATEGORIES, TASK_STATUSES, PRIORITIES } from "@/lib/config/constants";
-import { CheckSquare, Search, Filter, Check, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import type { Task } from "@/lib/types/database";
+import { toast } from "@/components/ios/toast";
+import { CheckSquare, Search, Filter, Check, AlertTriangle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import type { Task, Priority } from "@/lib/types/database";
 
 export default function TasksPage() {
   const { t, formatDate } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: tasks, loading, refetch } = useTasks(trip?.id);
-  const { updateTask } = useMutations();
+  const { updateTask, addTask } = useMutations();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // ─── Crear tarea (iter 4: P0 ghost-feature fix) ────────────────────────
+  // El form vive inline (no hay Sheet component en la lib) y se expande
+  // bajo el SectionHeader. Reset al submitear; no re-aparece hasta tocar de nuevo.
+  const [showCreate, setShowCreate] = useState(false);
+  const [nTitle, setNTitle] = useState("");
+  const [nPriority, setNPriority] = useState<Priority>("medium");
+  const [nDueDate, setNDueDate] = useState("");
+  const [nCategory, setNCategory] = useState("other");
+  const [nNextAction, setNNextAction] = useState("");
+  const [creating, setCreating] = useState(false);
+  const resetCreate = useCallback(() => {
+    setNTitle(""); setNPriority("medium"); setNDueDate(""); setNCategory("other"); setNNextAction("");
+  }, []);
+  const submitCreate = useCallback(async () => {
+    if (!trip || !nTitle.trim()) return;
+    setCreating(true);
+    try {
+      await addTask({
+        trip_id: trip.id,
+        title: nTitle.trim(),
+        priority: nPriority,
+        due_date: nDueDate || null,
+        category: nCategory,
+        next_action: nNextAction.trim() || null,
+      });
+      resetCreate();
+      setShowCreate(false);
+      refetch();
+      toast(t.common.save, "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setCreating(false);
+    }
+  }, [trip, nTitle, nPriority, nDueDate, nCategory, nNextAction, addTask, refetch, resetCreate, t]);
   const list = useMemo(() => tasks ?? [], [tasks]);
   const filtered = useMemo(() => {
     let r = list;
@@ -38,7 +74,50 @@ export default function TasksPage() {
   if (loading) return <div className="animate-pulse space-y-4">{[1,2,3].map(i=><div key={i} className="h-16 bg-muted rounded-lg" />)}</div>;
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
-      <SectionHeader title={t.tasks.title} subtitle={`${stats.done}/${stats.total} · ${stats.critical} ${t.dashboard.critical.toLowerCase()} · ${stats.overdue} ${t.common.overdue.toLowerCase()}`} />
+      <SectionHeader
+        title={t.tasks.title}
+        subtitle={`${stats.done}/${stats.total} · ${stats.critical} ${t.dashboard.critical.toLowerCase()} · ${stats.overdue} ${t.common.overdue.toLowerCase()}`}
+        action={
+          <Button size="sm" variant={showCreate ? "outline" : "default"} onClick={() => setShowCreate(s => !s)} className="gap-1">
+            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showCreate ? t.common.cancel : t.common.add}
+          </Button>
+        }
+      />
+      {showCreate && (
+        <div className="border rounded-lg bg-card p-3 space-y-2">
+          <Input
+            placeholder={t.tasks.title}
+            value={nTitle}
+            onChange={e => setNTitle(e.target.value)}
+            autoFocus
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <SelectNative value={nPriority} onChange={e => setNPriority(e.target.value as Priority)}>
+              {PRIORITIES.map(p => <option key={p.value} value={p.value}>{t.priority[p.value as keyof typeof t.priority] || p.label}</option>)}
+            </SelectNative>
+            <SelectNative value={nCategory} onChange={e => setNCategory(e.target.value)}>
+              {TASK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </SelectNative>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="date" value={nDueDate} onChange={e => setNDueDate(e.target.value)} />
+            <Input
+              placeholder={t.tasks.nextAction}
+              value={nNextAction}
+              onChange={e => setNNextAction(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={() => { resetCreate(); setShowCreate(false); }}>
+              {t.common.cancel}
+            </Button>
+            <Button size="sm" onClick={submitCreate} disabled={creating || !nTitle.trim()}>
+              {creating ? t.common.loading : t.common.save}
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
         <div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /><Input placeholder={t.tasks.searchPlaceholder} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div><Button variant="outline" size="icon" onClick={() => setShowFilters(!showFilters)}><Filter className="w-4 h-4" /></Button></div>
         {showFilters && <div className="grid grid-cols-3 gap-2"><SelectNative value={filterStatus} onChange={e => setFilterStatus(e.target.value)}><option value="all">{t.tasks.allStatus}</option>{TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{t.status[s.value as keyof typeof t.status] || s.label}</option>)}</SelectNative><SelectNative value={filterCategory} onChange={e => setFilterCategory(e.target.value)}><option value="all">{t.tasks.allCategories}</option>{TASK_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</SelectNative><SelectNative value={filterPriority} onChange={e => setFilterPriority(e.target.value)}><option value="all">{t.tasks.allPriorities}</option>{PRIORITIES.map(p => <option key={p.value} value={p.value}>{t.priority[p.value as keyof typeof t.priority] || p.label}</option>)}</SelectNative></div>}

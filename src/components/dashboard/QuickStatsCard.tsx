@@ -1,6 +1,7 @@
 "use client";
 
 import { Calendar, Plane, FileCheck2, Wallet } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
 
 interface Stats {
   daysUntilStart: number | null;
@@ -28,6 +29,7 @@ interface Props {
  */
 export function QuickStatsCard({ stats }: Props) {
   const { daysUntilStart, flightsRemaining, documentsNeedingAction, budgetUsedPct } = stats;
+  const { t } = useI18n();
 
   const dayUrgency: StatCellProps["tone"] =
     daysUntilStart === null ? "muted" :
@@ -43,25 +45,25 @@ export function QuickStatsCard({ stats }: Props) {
     <div className="ios-card p-4 grid grid-cols-2 gap-3">
       <StatCell
         icon={<Calendar className="w-4 h-4" />}
-        label="Días hasta el viaje"
-        value={daysUntilStart === null ? "—" : daysUntilStart < 0 ? "En curso" : String(daysUntilStart)}
+        label={t.today.quickStats.daysToTrip}
+        value={daysUntilStart === null ? "—" : daysUntilStart < 0 ? t.today.quickStats.inProgress : String(daysUntilStart)}
         tone={dayUrgency}
       />
       <StatCell
         icon={<Plane className="w-4 h-4" />}
-        label="Vuelos restantes"
+        label={t.today.quickStats.flightsRemaining}
         value={String(flightsRemaining)}
         tone="primary"
       />
       <StatCell
         icon={<FileCheck2 className="w-4 h-4" />}
-        label="Docs por revisar"
+        label={t.today.quickStats.docsToReview}
         value={String(documentsNeedingAction)}
         tone={documentsNeedingAction > 0 ? "warning" : "success"}
       />
       <StatCell
         icon={<Wallet className="w-4 h-4" />}
-        label="Presupuesto"
+        label={t.today.quickStats.budget}
         value={`${Math.round(budgetUsedPct)}%`}
         tone={budgetTone}
       />

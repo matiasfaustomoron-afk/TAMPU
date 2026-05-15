@@ -10,7 +10,7 @@ export default function BudgetPage() {
   const { t, formatCurrency } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: budget, loading } = useBudgetSummary();
-  if (loading || !budget || !trip) return <div className="animate-pulse space-y-4">{[1,2,3,4].map(i=><div key={i} className="h-24 bg-muted rounded-lg" />)}</div>;
+  if (loading || !budget || !trip) return <div className="space-y-4">{[1,2,3,4].map(i=><div key={i} className="h-24 skeleton rounded-[var(--radius)]" />)}</div>;
   return (
     <div className="space-y-6 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader title={t.budget.title} subtitle={t.budget.financialHealth} />

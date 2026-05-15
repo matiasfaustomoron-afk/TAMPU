@@ -498,6 +498,58 @@ const en: Dictionary = {
     },
   },
 
+  today: {
+    eyebrows: {
+      focus: "What matters now",
+      attention: "Attention",
+      quickAccess: "One tap away",
+      nextTransfer: "Next transfer",
+      whereSleep: "Where you sleep",
+    },
+    quickChips: {
+      documents: "Documents",
+      import: "Import",
+      expense: "Expense",
+      sos: "SOS",
+    },
+    daysLeft: { one: "day", other: "days" },
+    thingsLeft: { one: "thing", other: "things" },
+    empty: {
+      eyebrow: "Start here",
+      title: "Your next trip",
+      description: "Create your first trip and unlock everything in the Command Center.",
+      cta: "Create trip",
+    },
+    quickStats: {
+      daysToTrip: "Days to trip",
+      flightsRemaining: "Flights remaining",
+      docsToReview: "Docs to review",
+      budget: "Budget",
+      inProgress: "In progress",
+    },
+  },
+
+  cashflow: {
+    status: "Status",
+    pace: "Pace",
+    ok: "OK",
+    careful: "Careful",
+    excess: "Over",
+    days: "Days",
+    payments: "Payments",
+    dailySpend: "Daily spend",
+    cumulativeVsBudget: "Cumulative vs budget",
+    actual: "Actual",
+    budget: "Budget",
+    byDestination: "By destination",
+    pctOfTotal: "% of total",
+    upcomingPayments: "Upcoming payments",
+    byWeek: "By week",
+    weekOf: "Week of",
+    expenses: "expenses",
+    paymentsLower: "payments",
+  },
+
   welcome: {
     eyebrow: "Tampu · The travel wallet",
     title: "Your whole trip,",

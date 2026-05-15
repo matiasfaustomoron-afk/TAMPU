@@ -136,7 +136,7 @@ export default function ReservationsPage() {
     refetch();
   }, [updateReservation, draft, refetch]);
 
-  if (loading) return <div className="animate-pulse space-y-4">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-lg" />)}</div>;
+  if (loading) return <div className="space-y-4">{[1,2,3].map(i => <div key={i} className="h-20 skeleton rounded-[var(--radius)]" />)}</div>;
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">

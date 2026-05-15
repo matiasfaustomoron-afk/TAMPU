@@ -60,7 +60,7 @@ export default function VaultPage() {
   // TODO Iter 3: pasar `toggleFavorite`/upload-flow a `addAttachment`/`updateAttachment`
   // mutations para que invaliden cache automáticamente.
   const { data: attachmentsRaw, loading: attachmentsLoading, refetch: refetchAttachments } = useAttachments(trip?.id);
-  const { addAttachment, deleteAttachment: deleteAttachmentMut } = useMutations();
+  const { addAttachment, updateAttachment: updateAttachmentMut, deleteAttachment: deleteAttachmentMut } = useMutations();
   const [files, setFiles] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -282,15 +282,18 @@ export default function VaultPage() {
   }, [selectedFile, trip, client, mode, uploadCategory, uploadNotes, uploadName, files, reservations, extractedFields, manualReservationId, addAttachment, refetchAttachments]);
 
   const toggleFavorite = useCallback(async (att: Attachment) => {
-    if (mode === "online" && client) {
-      await client.from("attachments").update({ is_favorite: !att.is_favorite }).eq("id", att.id);
-      setFiles(prev => prev.map(f => f.id === att.id ? { ...f, is_favorite: !f.is_favorite } : f));
+    if (mode === "online" && client && trip) {
+      // Pasa por la mutation centralizada → invalida cache, mantiene paridad
+      // con el resto de mutadores (addAttachment/deleteAttachment) y elimina
+      // el `client.from("attachments").update(...)` ad-hoc. UI re-renderea
+      // cuando TanStack rehidrata `attachmentsRaw`.
+      await updateAttachmentMut(att.id, { is_favorite: !att.is_favorite }, trip.id);
     } else {
       const updated = files.map(f => f.id === att.id ? { ...f, is_favorite: !f.is_favorite } : f);
       setFiles(updated);
       if (trip) writeVersioned(`travel-os-vault-${trip.id}`, VAULT_SCHEMA, updated);
     }
-  }, [client, mode, files, trip]);
+  }, [client, mode, files, trip, updateAttachmentMut]);
 
   const deleteFile = useCallback(async (att: Attachment) => {
     if (!confirm(`¿Eliminar "${att.file_name}"?`)) return;

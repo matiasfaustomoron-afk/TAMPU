@@ -37,7 +37,8 @@ import {
   fetchPackingItems, mutatePackingItem, insertPackingItem,
   fetchTripDays, fetchCities, upsertTripDay,
 } from "@/lib/data/entities";
-import { fetchAttachments, insertAttachment, deleteAttachment } from "@/lib/data/attachments";
+import { fetchAttachments, insertAttachment, updateAttachment, deleteAttachment } from "@/lib/data/attachments";
+import { fetchTripMembers, type TripMember } from "@/lib/data/members";
 
 // Demo data layer (localStorage, isolated)
 import * as demo from "@/lib/demo/demo-store";
@@ -73,6 +74,7 @@ const qk = {
   tripDays: (mode: string, tripId: string | undefined) => ["tripDays", mode, tripId ?? null] as const,
   cities: (mode: string, tripId: string | undefined) => ["cities", mode, tripId ?? null] as const,
   attachments: (mode: string, tripId: string | undefined) => ["attachments", mode, tripId ?? null] as const,
+  tripMembers: (mode: string, tripId: string | null | undefined) => ["tripMembers", mode, tripId ?? null] as const,
 } as const;
 
 // ─── Demo store helpers: attachments live in localStorage (`travel-os-vault-<tripId>`) ────
@@ -320,6 +322,26 @@ export function useAttachments(tripId: string | undefined) {
   );
 }
 
+// ─── Trip members ───────────────────────────────────────────────────────
+//
+// Online-only: trip_members vive en Supabase y depende de auth. Demo mode
+// no tiene concepto de membership (un único user local), así que devolvemos
+// [] sin tocar el store. Usa `useReactQuery` directo (no el wrapper
+// `useQuery<T>` interno) porque los callers de members consumen el shape
+// nativo de TanStack (`data`, `isLoading`, `refetch`) — no necesitan la
+// proyección a `{ data: T | null, loading, refetch }`.
+export function useTripMembers(tripId: string | null | undefined) {
+  const { mode, client } = useSupabase();
+  const h = useHydrated();
+  const enabled = h && !!tripId;
+  return useReactQuery<TripMember[]>({
+    queryKey: qk.tripMembers(mode, tripId) as unknown as unknown[],
+    queryFn: () =>
+      mode === "online" && client && tripId ? fetchTripMembers(client, tripId) : Promise.resolve([]),
+    enabled,
+  });
+}
+
 // ─── Composite hooks ────────────────────────────────────────────────────
 //
 // `useTripFullDataset` consolida la fetch logic compartida entre dashboard
@@ -448,6 +470,38 @@ export function useMutations() {
     },
   });
 
+  // mAddTask: P0 ghost-feature fix (iter 4). UI vivía sin botón crear; ahora
+  // /tasks expone Sheet con form básico. Demo path persiste vía demo-store;
+  // online path inserta vía Supabase con defaults sanitos (status=pending,
+  // progress=0, is_blocker=false). created_at/updated_at se setean explícitos
+  // por si la DB no tiene default (algunas migraciones tempranas no lo tenían).
+  const mAddTask = useMutation({
+    mutationFn: async (input: Partial<Task> & { trip_id: string; title: string }) => {
+      if (mode === "demo") return demo.addTask(input);
+      if (mode === "online" && client) {
+        const now = new Date().toISOString();
+        const payload = {
+          ...input,
+          status: input.status ?? "pending",
+          priority: input.priority ?? "medium",
+          criticality: input.criticality ?? "important",
+          progress: input.progress ?? 0,
+          is_blocker: input.is_blocker ?? false,
+          requires_payment: input.requires_payment ?? false,
+          created_at: now,
+          updated_at: now,
+        };
+        const { data, error } = await client.from("tasks").insert(payload).select().maybeSingle();
+        if (error) throw error;
+        return data as Task | null;
+      }
+      return null;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["tasks", mode, vars.trip_id] });
+    },
+  });
+
   const mAddExpense = useMutation({
     mutationFn: async (e: Omit<Expense, "id" | "created_at">) => {
       track(EVENTS.EXPENSE_ADDED, { category: e.category, currency: e.original_currency });
@@ -571,6 +625,18 @@ export function useMutations() {
     },
   });
 
+  // Mutación update (favorite toggle, notes edit, link a reservation, etc.).
+  // Recibe `trip_id` en el variable bag para poder hacer scoped invalidation
+  // sin tener que esperar el resultado: el cache se invalida igual aunque
+  // la response venga null por algún edge case de RLS.
+  const mUpdateAttachment = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Attachment>; trip_id: string }) =>
+      mode === "online" && client ? withSync(updateAttachment(client, id, patch)) : Promise.resolve(null),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["attachments", mode, vars.trip_id] });
+    },
+  });
+
   const mAddTrip = useMutation({
     mutationFn: async (trip: Omit<Trip, "id" | "user_id" | "created_at" | "updated_at" | "is_active">) => {
       let result: Trip | null = null;
@@ -666,6 +732,7 @@ export function useMutations() {
   return useMemo(
     () => ({
       updateTask: (id: string, u: Partial<Task>) => mTask.mutateAsync({ id, updates: u }),
+      addTask: (input: Partial<Task> & { trip_id: string; title: string }) => mAddTask.mutateAsync(input),
       addExpense: (e: Omit<Expense, "id" | "created_at">) => mAddExpense.mutateAsync(e),
       deleteExpense: (id: string) => mDeleteExpense.mutateAsync(id),
       updateDocument: (id: string, u: Partial<Document>) => mDocument.mutateAsync({ id, updates: u }),
@@ -689,6 +756,8 @@ export function useMutations() {
       ) => mSaveBudget.mutateAsync({ tripId, rows }),
       addAttachment: (a: Omit<Attachment, "id" | "created_at" | "updated_at">) =>
         mAddAttachment.mutateAsync(a),
+      updateAttachment: (id: string, patch: Partial<Attachment>, trip_id: string) =>
+        mUpdateAttachment.mutateAsync({ id, patch, trip_id }),
       deleteAttachment: (id: string) => mDeleteAttachment.mutateAsync(id),
     }),
     // Las mutations son ref-stable durante el lifecycle del hook (useMutation

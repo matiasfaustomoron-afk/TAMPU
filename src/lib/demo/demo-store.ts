@@ -230,6 +230,43 @@ export function updateTask(id: string, updates: Partial<Task>): Task | null {
   return store.tasks[idx];
 }
 
+export function addTask(input: Partial<Task> & { trip_id: string; title: string }): Task {
+  const store = getStore();
+  const now = new Date().toISOString();
+  const row: Task = {
+    id: generateId(),
+    trip_id: input.trip_id,
+    title: input.title,
+    description: input.description ?? null,
+    stage: input.stage ?? null,
+    category: input.category ?? "other",
+    subcategory: input.subcategory ?? null,
+    priority: input.priority ?? "medium",
+    criticality: input.criticality ?? "important",
+    responsible: input.responsible ?? null,
+    created_at: now,
+    start_date: input.start_date ?? null,
+    due_date: input.due_date ?? null,
+    status: input.status ?? "pending",
+    progress: input.progress ?? 0,
+    is_blocker: input.is_blocker ?? false,
+    dependency_id: input.dependency_id ?? null,
+    next_action: input.next_action ?? null,
+    requires_payment: input.requires_payment ?? false,
+    estimated_amount: input.estimated_amount ?? null,
+    actual_amount: input.actual_amount ?? null,
+    reservation_id: input.reservation_id ?? null,
+    document_id: input.document_id ?? null,
+    city_id: input.city_id ?? null,
+    city_name: input.city_name ?? null,
+    notes: input.notes ?? null,
+    updated_at: now,
+  };
+  store.tasks.push(row);
+  saveStore(store);
+  return row;
+}
+
 export function addExpense(expense: Omit<Expense, "id" | "created_at">): Expense {
   const store = getStore();
   const newExpense: Expense = { ...expense, id: generateId(), created_at: new Date().toISOString() };

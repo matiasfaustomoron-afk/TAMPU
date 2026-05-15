@@ -3,6 +3,7 @@ import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 // ─── Dynamic airport info via Claude ───
 // Receives an IATA code, returns rich info (terminals, food, currency exchange,
@@ -89,18 +90,8 @@ async function llmAirportInfo(
     model: "haiku",
   });
   if (!rich) return null;
-  try {
-    const clean = rich.text.replace(/^```(json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    const parsed = JSON.parse(clean) as Omit<AirportInfoResult, "iata" | "generated" | "source">;
-    return {
-      result: { iata, generated: true, source: "claude", ...parsed },
-      provider: rich.provider,
-      model: rich.model,
-      inputTokens: rich.usage.inputTokens,
-      outputTokens: rich.usage.outputTokens,
-      source,
-    };
-  } catch {
+  const parsed = extractJson<Omit<AirportInfoResult, "iata" | "generated" | "source">>(rich.text);
+  if (!parsed) {
     return {
       result: null,
       provider: rich.provider,
@@ -110,6 +101,14 @@ async function llmAirportInfo(
       source,
     };
   }
+  return {
+    result: { iata, generated: true, source: "claude", ...parsed },
+    provider: rich.provider,
+    model: rich.model,
+    inputTokens: rich.usage.inputTokens,
+    outputTokens: rich.usage.outputTokens,
+    source,
+  };
 }
 
 function fallback(iata: string): AirportInfoResult {
