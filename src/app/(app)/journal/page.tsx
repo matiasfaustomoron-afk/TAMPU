@@ -102,6 +102,12 @@ function loadEntries(tripId: string): JournalEntry[] {
 function saveEntries(tripId: string, entries: JournalEntry[]): void {
   writeVersioned(STORE_KEY_PREFIX + tripId, JOURNAL_SCHEMA, entries);
   if (typeof window !== "undefined") {
+    // Iter 6: renombramos el event a "tampu-vault-change" pero seguimos emitiendo
+    // el legacy "travel-os-vault-change" para no romper listeners en backup.ts,
+    // demo-store.ts, papua-seoul-trip.ts y attach-doc-button.tsx que todavía
+    // escuchan el antiguo. Migrar esos listeners al nuevo event y borrar este
+    // bridge en una iteración futura.
+    window.dispatchEvent(new Event("tampu-vault-change"));
     window.dispatchEvent(new Event("travel-os-vault-change"));
   }
 }
@@ -282,6 +288,27 @@ export default function JournalPage() {
     setEntries(next);
     saveEntries(trip.id, next);
   }, [trip, entries]);
+
+  // Debounced caption save — antes saveEntries se ejecutaba por keystroke
+  // (writeVersioned + dispatchEvent) y producía jank en captions largas.
+  // Debounce 300ms: el setOpenEntry sigue siendo síncrono (UI responsive)
+  // pero la persistencia espera a que el user pare de tipear.
+  const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCaptionChange = useCallback((entry: JournalEntry, value: string) => {
+    setOpenEntry({ ...entry, caption: value });
+    if (captionTimer.current) clearTimeout(captionTimer.current);
+    captionTimer.current = setTimeout(() => {
+      updateCaption(entry, value);
+    }, 300);
+  }, [updateCaption]);
+
+  // Cleanup del timer al desmontar para evitar que un save tardío se ejecute
+  // sobre un trip ya cambiado.
+  useEffect(() => {
+    return () => {
+      if (captionTimer.current) clearTimeout(captionTimer.current);
+    };
+  }, []);
 
   const addComment = useCallback((entry: JournalEntry, body: string) => {
     if (!trip || !body.trim()) return;
@@ -633,11 +660,7 @@ export default function JournalPage() {
               <label className="text-[10px] uppercase text-muted-foreground tracking-wider">Pie de foto</label>
               <Textarea
                 value={openEntry.caption}
-                onChange={(e) => {
-                  const next = { ...openEntry, caption: e.target.value };
-                  setOpenEntry(next);
-                  updateCaption(openEntry, e.target.value);
-                }}
+                onChange={(e) => onCaptionChange(openEntry, e.target.value)}
                 placeholder={openEntry.category === "food" ? "¿Qué comiste? ¿Dónde? ¿Cuánto?" : "¿Qué pasó en este momento?"}
                 rows={2}
                 className="mt-1"

@@ -34,7 +34,11 @@ function getSnapshot(): Theme {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === "light" || raw === "dark" || raw === "system") return raw;
   } catch { /* ignore */ }
-  return "dark";
+  // Mantener consistencia con getServerSnapshot() y con el boot script en
+  // layout.tsx (no agrega `dark` class por default). Si devolvíamos "dark"
+  // acá cuando localStorage estaba vacío, había un mismatch transitorio
+  // entre el HTML server-rendered (light) y el primer client render (dark).
+  return "light";
 }
 
 function subscribe(cb: () => void): () => void {

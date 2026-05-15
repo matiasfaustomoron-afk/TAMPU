@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ios/toast";
 import { reportError } from "@/lib/utils/errors";
 import { BookOpen, Loader2 } from "lucide-react";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * PrintBookSheet — UI wrapper para `/api/print-book`.
@@ -29,14 +30,14 @@ interface Props {
 
 type Binding = "softcover" | "hardcover" | "lay-flat-premium";
 
-const BINDING_LABELS: Record<Binding, string> = {
-  softcover: "Tapa blanda",
-  hardcover: "Tapa dura",
-  "lay-flat-premium": "Lay-flat premium",
-};
-
 export function PrintBookSheet({ open, onClose, tripId, tripName }: Props) {
-  const [title, setTitle] = useState(`Mi viaje a ${tripName}`);
+  const { t } = useI18n();
+  const BINDING_LABELS: Record<Binding, string> = {
+    softcover: t.journal.printBook.bindings.softcover,
+    hardcover: t.journal.printBook.bindings.hardcover,
+    "lay-flat-premium": t.journal.printBook.bindings.lay_flat,
+  };
+  const [title, setTitle] = useState(`${t.journal.printBook.defaultTitlePrefix} ${tripName}`);
   const [binding, setBinding] = useState<Binding>("hardcover");
   const [ordering, setOrdering] = useState(false);
 

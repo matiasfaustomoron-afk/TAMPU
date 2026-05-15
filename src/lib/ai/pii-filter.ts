@@ -43,6 +43,18 @@ const PATTERNS = [
   // shape similar (ABC123456). El patrón sin label rompía la extracción de
   // confirmation codes en parse-booking / parse-email-confirmation.
   { regex: /\b(?:passport|pasaporte|pasap\.?|documento)[:\s]+[A-Z]{1,3}\d{6,9}\b/gi, replacement: "[ID]" },
+  // CBU argentino — 22 dígitos consecutivos. Si vienen con label
+  // (`CBU 1234...` / `alias CBU: ...`), matcheamos primero el label-form para
+  // no comerse el label. El bare 22-digit lo cubre el segundo regex (preceded
+  // por word boundary). Recall > precision: si hay 22 dígitos seguidos en un
+  // email de booking, casi seguro es CBU.
+  { regex: /\b(?:cbu|alias\s*cbu)\b[:\s#]*\d{22}\b/gi, replacement: "[CBU]" },
+  { regex: /\b\d{22}\b/g, replacement: "[CBU]" },
+  // IBAN europeo — 2 letras país + 2 dígitos check + 11..30 alphanumerics
+  // (sin spaces; el patrón con spaces tipo `ES12 3456 7890` lo dejamos
+  // afuera por simplicidad — la mayoría de los emails lo traen sin spaces o
+  // con separadores cada 4 chars, que normalizamos en el parser).
+  { regex: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g, replacement: "[IBAN]" },
 ] as const;
 
 /**

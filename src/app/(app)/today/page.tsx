@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bed, Bus, AlertTriangle, Compass, Plus, Inbox } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   useReservations,
   useDocuments,
 } from "@/lib/hooks/use-trip-data";
+import { useSupabase } from "@/lib/context/supabase-provider";
 import { useI18n } from "@/i18n/provider";
 import { plural } from "@/lib/i18n/plural";
 import { IOSFeatureCard, ProgressRing } from "@/components/ios";
@@ -19,6 +20,9 @@ import { DestinationPhoto } from "@/components/brand/destination-photo";
 import { GlyphCartera, GlyphDinero, GlyphEmergencia } from "@/components/brand/glyphs";
 import { QuickStatsCard } from "@/components/dashboard/QuickStatsCard";
 import { RecapShareButton } from "@/components/share/RecapShareButton";
+import { AnnualRecapPromoCard } from "@/components/share/AnnualRecapPromoCard";
+import { ExpiringDocCard } from "@/components/share/ExpiringDocCard";
+import { toast } from "@/components/ios/toast";
 import { scheduleDailyBrief } from "@/lib/daily-brief";
 import { pushWidgetFromCommandCenter } from "@/lib/native/widget-bridge";
 import { useCountUp } from "@/lib/hooks/use-count-up";
@@ -82,6 +86,28 @@ export default function TodayPage() {
   const tripId = cc?.trip.id;
   const { data: reservations } = useReservations(tripId);
   const { data: documents } = useDocuments(tripId);
+
+  // El campo `recap_public` NO está en el shape `Trip` que devuelve el hook
+  // (no se incluye en el select del fetchActiveTrip). Lo pegamos por separado
+  // solo para decidir si el RecapShareButton va habilitado o disabled-with-tooltip.
+  // Si la query falla o tira null, asumimos `false` (UX seguro = no compartir).
+  const { client, mode } = useSupabase();
+  const [recapPublic, setRecapPublic] = useState<boolean>(false);
+  useEffect(() => {
+    if (!tripId || mode !== "online" || !client) { setRecapPublic(false); return; }
+    let alive = true;
+    client
+      .from("trips")
+      .select("recap_public")
+      .eq("id", tripId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        const v = (data as { recap_public?: boolean } | null)?.recap_public;
+        setRecapPublic(v === true);
+      });
+    return () => { alive = false; };
+  }, [tripId, client, mode]);
 
   const stats = useMemo(() => {
     if (!cc) return null;
@@ -294,12 +320,41 @@ export default function TodayPage() {
         </section>
       )}
 
-      {/* ─── 1.6. SHARE RECAP — botón compartir og:image del viaje ─── */}
+      {/* ─── 1.6. SHARE RECAP — botón compartir og:image del viaje ───
+          Solo es funcional si trip.recap_public === true (opt-in en Ajustes).
+          Si no, mostramos un proxy disabled-with-tooltip que avisa al user
+          dónde activarlo. Evita confusión: antes el botón aparecía siempre
+          pero el endpoint pública /recap/[id] devolvía 404 si flag = false. */}
       {trip?.id && (
         <section className="px-4 mt-3" aria-label="Compartir recap del viaje">
-          <RecapShareButton tripId={trip.id} tripName={trip.name || trip.destination || "Mi viaje"} />
+          {recapPublic ? (
+            <RecapShareButton tripId={trip.id} tripName={trip.name || trip.destination || "Mi viaje"} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => toast("Activá Compartir en Ajustes", "info")}
+              className="w-full opacity-50 cursor-not-allowed pressable"
+              title="Activá en Ajustes para compartir"
+              aria-label="Compartir recap (desactivado — activá en Ajustes)"
+              aria-disabled="true"
+            >
+              <div className="ios-card p-3 flex items-center justify-center gap-2 text-[13px] text-muted-foreground">
+                <span>Compartir recap (activá en Ajustes)</span>
+              </div>
+            </button>
+          )}
         </section>
       )}
+
+      {/* ─── 1.7. ANNUAL RECAP PROMO (Tampu · Unpacked, Nov-Ene only) ─── */}
+      <section className="px-4 mt-3">
+        <AnnualRecapPromoCard />
+      </section>
+
+      {/* ─── 1.8. EXPIRING DOCS — vencen en 90 días (Iter 6) ─── */}
+      <section className="px-4 mt-3">
+        <ExpiringDocCard />
+      </section>
 
       {/* ─── 2. NEXT BEST ACTION ─── */}
       {nba && (

@@ -521,16 +521,25 @@ export function useMutations() {
     },
   });
 
+  // Overload: callers pueden pasar `id` directo (legacy, invalida broad) o
+  // `{ id, tripId }` (preferido, invalida scoped). El scoped path evita un
+  // refetch globalpor todas las queries del mode cuando solo cambió un trip.
   const mDeleteExpense = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (input: string | { id: string; tripId?: string }) => {
+      const id = typeof input === "string" ? input : input.id;
       if (mode === "online" && client) return withSync(removeExpense(client, id));
       if (mode === "demo") return demo.deleteExpense(id);
       return false;
     },
-    // No sabemos trip_id desde el id solo → invalidate todas las expenses queries del mode
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["expenses", mode] });
-      qc.invalidateQueries({ queryKey: ["budgetCategories", mode] });
+    onSuccess: (_d, input) => {
+      const tripId = typeof input === "string" ? null : input.tripId;
+      if (tripId) {
+        qc.invalidateQueries({ queryKey: ["expenses", mode, tripId] });
+        qc.invalidateQueries({ queryKey: ["budgetCategories", mode, tripId] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["expenses", mode] });
+        qc.invalidateQueries({ queryKey: ["budgetCategories", mode] });
+      }
     },
   });
 
@@ -591,13 +600,19 @@ export function useMutations() {
   });
 
   const mDeleteReservation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (input: string | { id: string; tripId?: string }) => {
+      const id = typeof input === "string" ? input : input.id;
       if (mode === "online" && client) return withSync(removeReservation(client, id));
       if (mode === "demo") return demo.deleteReservation(id);
       return false;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["reservations", mode] });
+    onSuccess: (_d, input) => {
+      const tripId = typeof input === "string" ? null : input.tripId;
+      if (tripId) {
+        qc.invalidateQueries({ queryKey: ["reservations", mode, tripId] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["reservations", mode] });
+      }
     },
   });
 
@@ -622,12 +637,18 @@ export function useMutations() {
   });
 
   const mDeleteAttachment = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (input: string | { id: string; tripId?: string }) => {
+      const id = typeof input === "string" ? input : input.id;
       if (mode === "online" && client) return withSync(deleteAttachment(client, id));
       return false;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["attachments", mode] });
+    onSuccess: (_d, input) => {
+      const tripId = typeof input === "string" ? null : input.tripId;
+      if (tripId) {
+        qc.invalidateQueries({ queryKey: ["attachments", mode, tripId] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["attachments", mode] });
+      }
     },
   });
 
@@ -740,13 +761,15 @@ export function useMutations() {
       updateTask: (id: string, u: Partial<Task>) => mTask.mutateAsync({ id, updates: u }),
       addTask: (input: Partial<Task> & { trip_id: string; title: string }) => mAddTask.mutateAsync(input),
       addExpense: (e: Omit<Expense, "id" | "created_at">) => mAddExpense.mutateAsync(e),
-      deleteExpense: (id: string) => mDeleteExpense.mutateAsync(id),
+      deleteExpense: (input: string | { id: string; tripId?: string }) =>
+        mDeleteExpense.mutateAsync(input),
       updateDocument: (id: string, u: Partial<Document>) => mDocument.mutateAsync({ id, updates: u }),
       updatePackingItem: (id: string, u: Partial<PackingItem>) => mPackingItem.mutateAsync({ id, updates: u }),
       addPackingItem: (item: Omit<PackingItem, "id">) => mAddPackingItem.mutateAsync(item),
       updateReservation: (id: string, u: Partial<Reservation>) => mReservation.mutateAsync({ id, updates: u }),
       addReservation: (r: Omit<Reservation, "id" | "created_at" | "updated_at">) => mAddReservation.mutateAsync(r),
-      deleteReservation: (id: string) => mDeleteReservation.mutateAsync(id),
+      deleteReservation: (input: string | { id: string; tripId?: string }) =>
+        mDeleteReservation.mutateAsync(input),
       addTrip: (trip: Omit<Trip, "id" | "user_id" | "created_at" | "updated_at" | "is_active">) =>
         mAddTrip.mutateAsync(trip),
       activateTrip: (tripId: string) => mActivateTrip.mutateAsync(tripId),
@@ -764,7 +787,8 @@ export function useMutations() {
         mAddAttachment.mutateAsync(a),
       updateAttachment: (id: string, patch: Partial<Attachment>, trip_id: string) =>
         mUpdateAttachment.mutateAsync({ id, patch, trip_id }),
-      deleteAttachment: (id: string) => mDeleteAttachment.mutateAsync(id),
+      deleteAttachment: (input: string | { id: string; tripId?: string }) =>
+        mDeleteAttachment.mutateAsync(input),
     }),
     // Las mutations son ref-stable durante el lifecycle del hook (useMutation
     // hooks devuelven la misma fn ref entre renders); este memo + las refs

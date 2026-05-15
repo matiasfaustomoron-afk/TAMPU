@@ -118,6 +118,21 @@ REGLAS:
 - NO incluyas markdown, NO incluyas explicaciones fuera del JSON.`;
 }
 
+// Helper: formato YYYY-MM-DD (UTC noon-safe).
+function formatDate(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Helper: suma N días a una fecha YYYY-MM-DD y devuelve el resultado en mismo formato.
+function addDays(startDate: string, offsetDays: number): string {
+  const d = new Date(`${startDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return formatDate(d);
+}
+
 function safeParseItinerary(raw: string, p: GenerateItineraryPrompt): DraftItinerary | null {
   try {
     // El modelo a veces envuelve en ```json ... ```. Limpiamos.
@@ -135,6 +150,62 @@ function safeParseItinerary(raw: string, p: GenerateItineraryPrompt): DraftItine
     if (!parsed.currency) parsed.currency = p.budgetCurrency;
     if (typeof parsed.total_days !== "number") parsed.total_days = parsed.days.length;
     if (!Array.isArray(parsed.tips)) parsed.tips = [];
+
+    // ─── Day count + date sanity (Iter 6) ──────────────────────────────
+    // El modelo a veces devuelve más/menos días que el rango pedido, o con
+    // day_number desordenados, o fechas fuera de [start..end]. Re-clampeamos
+    // para que el draft no muestre días imaginarios al user.
+    const dayCount = (() => {
+      const s = new Date(`${p.startDate}T00:00:00Z`);
+      const e = new Date(`${p.endDate}T00:00:00Z`);
+      return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1);
+    })();
+
+    if (parsed.days.length !== dayCount) {
+      console.warn(`[generate-itinerary] day count mismatch: got ${parsed.days.length}, expected ${dayCount} — truncating/padding`);
+      if (parsed.days.length > dayCount) {
+        parsed.days = parsed.days.slice(0, dayCount);
+      } else {
+        // Pad con días vacíos hasta llegar a dayCount.
+        while (parsed.days.length < dayCount) {
+          const i = parsed.days.length;
+          parsed.days.push({
+            day_number: i + 1,
+            date: addDays(p.startDate, i),
+            city: parsed.destination,
+            zone: null,
+            accommodation_suggestion: null,
+            main_transport: null,
+            activities: [],
+            total_estimated_cost: 0,
+            notes: null,
+          });
+        }
+      }
+      parsed.total_days = dayCount;
+    }
+
+    // Reasignar day_number 1..N consecutivos (defensivo: el modelo a veces
+    // los manda fuera de orden o con saltos).
+    parsed.days.forEach((d, i) => { d.day_number = i + 1; });
+
+    // Validar/reasignar dates en [startDate..endDate]. Si la date que vino del
+    // modelo está fuera del rango (o no es parseable), seteamos secuencial
+    // desde startDate. NO inventamos — si no se puede, queda null.
+    const startMs = new Date(`${p.startDate}T00:00:00Z`).getTime();
+    const endMs = new Date(`${p.endDate}T00:00:00Z`).getTime();
+    parsed.days.forEach((d, i) => {
+      if (!d.date) {
+        d.date = addDays(p.startDate, i);
+        return;
+      }
+      const dMs = new Date(`${d.date}T00:00:00Z`).getTime();
+      if (Number.isNaN(dMs) || dMs < startMs || dMs > endMs) {
+        console.warn(`[generate-itinerary] day ${i + 1} date out of range: "${d.date}" — reassigning`);
+        d.date = addDays(p.startDate, i);
+      }
+    });
+
     // Default kind si el modelo se olvidó
     parsed.days.forEach(d => {
       if (!Array.isArray(d.activities)) d.activities = [];
@@ -184,6 +255,9 @@ export async function POST(req: NextRequest) {
     timeoutMs: 55_000,
     // Sonnet para itinerary — requiere planning capacity. Haiku no llega.
     model: "sonnet",
+    // Prosa más natural en descripciones / tips. Default global ahora es 0.2,
+    // pero itinerary necesita variedad en sugerencias de actividades.
+    temperature: 0.6,
   });
 
   // Log usage REAL del provider — ya no worst-case. Identifier per-user

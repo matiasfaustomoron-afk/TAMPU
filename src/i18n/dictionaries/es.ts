@@ -387,9 +387,19 @@ const es = {
   vault: {
     title: "Documentos",
     subtitle: "Tus pases y documentos del viaje",
-    upload: "Subir archivo",
+    upload: "Subir documento",
+    uploadFirst: "Subir tu primer documento",
+    uploadSheetTitle: "Subir documento",
+    ariaLabel: "Documentos del viaje",
+    name: "Nombre",
+    category: "Categoría",
+    notes: "Notas",
+    classifyAI: "Clasificar con IA",
+    analyzing: "Analizando...",
+    autoLinkTo: "Auto-vinculará a",
+    retentionFaq: "¿Cuánto duran mis archivos?",
+    locationShort: "Ubicación:",
     noFiles: "Sin archivos todavía",
-    uploadFirst: "Subí tu primer documento",
     favorites: "Favoritos",
     critical: "Críticos",
     offlineReady: "Disponible offline",
@@ -413,6 +423,48 @@ const es = {
       receipt: "Comprobante",
       other: "Otro",
     },
+    attach: {
+      savedToVault: "guardado en Cartera",
+      deleted: "Documento eliminado",
+      attachAnother: "Adjuntar otro",
+      attachPdfImage: "Adjuntar PDF / imagen",
+      offlineFooter: "Se guarda offline en tu Cartera y queda asociado a este",
+      itemReservation: "ítem",
+      itemRecord: "registro",
+    },
+  },
+
+  // ─── MEMBERS (compartir viaje) ───
+  members: {
+    roles: {
+      owner: "Dueño",
+      editor: "Editor",
+      viewer: "Visor",
+    },
+  },
+
+  // ─── COMMENTS ───
+  comments: {
+    commentCount: { one: "comentario", other: "comentarios" },
+    commentEmpty: "Comentar",
+    hideResolved: "Ocultar resueltos",
+    showResolved: { one: "Mostrar {count} resuelto", other: "Mostrar {count} resueltos" },
+    placeholder: "Escribí un comentario…",
+    addPlaceholder: "Agregar comentario…",
+    replyTo: "Responder a {name}…",
+    reply: "responder",
+    cancel: "cancelar",
+    resolvedBy: "Resuelto",
+    resolvedByName: "Resuelto por {name}",
+    deletePrompt: "¿Eliminar este comentario?",
+    aria: {
+      react: "Reaccionar",
+      reactWith: "Reaccionar {emoji}",
+      reopen: "Reabrir",
+      resolve: "Resolver",
+      delete: "Eliminar",
+      send: "Enviar",
+    },
   },
 
   // ─── JOURNAL ───
@@ -425,6 +477,14 @@ const es = {
     all: "Todo",
     photoMoment: "Momento del viaje",
     addedToDiary: "agregada al diario",
+    printBook: {
+      bindings: {
+        softcover: "Tapa blanda",
+        hardcover: "Tapa dura",
+        lay_flat: "Lay-flat premium",
+      },
+      defaultTitlePrefix: "Mi viaje a",
+    },
   },
 
   // ─── BUDGET CATEGORIES (label-only, value → label translation) ───
@@ -734,6 +794,13 @@ const es = {
     emptyAll: "Sin encuestas todavía.",
     create: "Crear encuesta",
     closed: "Cerrada",
+    deleted: "Encuesta eliminada",
+    deletePrompt: "¿Eliminar la encuesta \"{question}\"?",
+    voteCount: { one: "voto", other: "votos" },
+    ariaDelete: "Eliminar encuesta",
+    activity: {
+      voted: "votó \"{option}\" en \"{question}\"",
+    },
   },
 
   // ─── INBOX (per-trip email alias) ───

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { isSupabaseConfigured, createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/i18n/provider";
 import { LOCALES, LOCALE_LABELS } from "@/i18n/config";
+import { toast } from "@/components/ios/toast";
 
 const isDemoEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
 
@@ -24,6 +25,35 @@ function LoginForm() {
   // Cuando el signup requiere email confirmation, NO hay session — mostramos
   // pantalla "revisá tu mail" en vez de intentar push a /today (que rebota a /login).
   const [signupSent, setSignupSent] = useState<string | null>(null);
+  // Forgot password flow — UI extra debajo del submit. Mostramos un input email y
+  // disparamos resetPasswordForEmail. NO exponemos si el user existe (security).
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  const handleForgot = async () => {
+    if (!forgotEmail) { toast(t.auth.emailRequired, "warn"); return; }
+    setForgotLoading(true);
+    try {
+      const sb = createClient();
+      if (!sb) { toast("Supabase not configured", "error"); return; }
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { error: re } = await sb.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${origin}/auth/callback?next=/settings`,
+      });
+      // No discriminamos error vs success en el mensaje al usuario — evitamos
+      // confirmar si el email existe (enumeration attack). Solo log silent al console.
+      if (re) console.warn("[forgot-password]", re.message);
+      toast("Si el email existe, recibirás un enlace en breve", "info");
+      setForgotOpen(false);
+      setForgotEmail("");
+    } catch (e) {
+      console.warn("[forgot-password]", e);
+      toast("No pudimos procesar la solicitud. Probá de nuevo.", "error");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     if (!email || !password) { setError(t.auth.emailRequired); return; }
@@ -99,7 +129,59 @@ function LoginForm() {
         <p className="text-sm text-muted-foreground mb-4">{t.auth.subtitle}</p>
         <div className="flex justify-center gap-1">{LOCALES.map(l => <button key={l} onClick={() => setLocale(l)} className={`px-2.5 py-1 rounded text-xs font-medium ${locale === l ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"}`}>{LOCALE_LABELS[l]}</button>)}</div>
       </div>
-      {isSupabaseConfigured && (<div className="space-y-4"><div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.auth.email}</label><Input type="email" placeholder="your@email.com" className="mt-1" value={email} onChange={e => setEmail(e.target.value)} /></div><div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.auth.password}</label><Input type="password" placeholder="••••••••" className="mt-1" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAuth()} /></div>{error && <p className="text-xs text-destructive">{error}</p>}<Button className="w-full" onClick={handleAuth} disabled={loading}>{loading ? t.common.loading : mode === "login" ? t.auth.signIn : t.auth.signUp}</Button><p className="text-xs text-center text-muted-foreground">{mode === "login" ? t.auth.noAccount : t.auth.hasAccount} <button onClick={() => setMode(mode === "login" ? "signup" : "login")} className="text-primary underline">{mode === "login" ? t.auth.signUp : t.auth.signIn}</button></p></div>)}
+      {isSupabaseConfigured && (
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.auth.email}</label>
+            <Input type="email" placeholder="your@email.com" className="mt-1" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.auth.password}</label>
+            <Input type="password" placeholder="••••••••" className="mt-1" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAuth()} />
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <Button className="w-full" onClick={handleAuth} disabled={loading}>{loading ? t.common.loading : mode === "login" ? t.auth.signIn : t.auth.signUp}</Button>
+
+          {/* Forgot password: solo visible en modo login (signup no aplica). Inline
+              expander para no romper layout ni agregar route /forgot. */}
+          {mode === "login" && !forgotOpen && (
+            <p className="text-xs text-center">
+              <button
+                onClick={() => { setForgotOpen(true); setForgotEmail(email); }}
+                className="text-muted-foreground hover:text-primary underline"
+                aria-label="Recuperar contraseña"
+              >
+                Olvidé mi contraseña
+              </button>
+            </p>
+          )}
+          {mode === "login" && forgotOpen && (
+            <div className="space-y-2 p-3 rounded-lg border border-border bg-muted/30">
+              <p className="text-xs font-semibold">Recuperar contraseña</p>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Te mandamos un enlace para resetear la contraseña. Ingresá tu email.
+              </p>
+              <Input
+                type="email"
+                placeholder="your@email.com"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleForgot()}
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleForgot} disabled={forgotLoading} className="flex-1">
+                  {forgotLoading ? t.common.loading : "Enviar enlace"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setForgotOpen(false); setForgotEmail(""); }} disabled={forgotLoading}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-center text-muted-foreground">{mode === "login" ? t.auth.noAccount : t.auth.hasAccount} <button onClick={() => setMode(mode === "login" ? "signup" : "login")} className="text-primary underline">{mode === "login" ? t.auth.signUp : t.auth.signIn}</button></p>
+        </div>
+      )}
       {isDemoEnabled && (<>{isSupabaseConfigured && <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">{t.auth.or}</span></div></div>}<Button onClick={handleDemo} variant={isSupabaseConfigured ? "outline" : "default"} className="w-full" disabled={loading}>{loading ? t.common.loading : t.auth.enterDemo}</Button><p className="text-[10px] text-center text-muted-foreground">{t.auth.demoNote}</p></>)}
     </div>
   );

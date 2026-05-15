@@ -17,6 +17,8 @@ import { useSupabase } from "@/lib/context/supabase-provider";
 import { logActivity } from "@/lib/collab/activity-feed";
 import { haptic } from "@/lib/native/platform";
 import { toast } from "@/components/ios/toast";
+import { useI18n } from "@/i18n/provider";
+import { plural } from "@/lib/i18n/plural";
 
 interface Props {
   poll: Poll;
@@ -34,6 +36,7 @@ interface Props {
  */
 export function PollCard({ poll, onChange }: Props) {
   const { user, client, mode } = useSupabase();
+  const { t, locale } = useI18n();
   const userId = user?.id || "demo-user";
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Tú";
   const [now, setNow] = useState(() => Date.now());
@@ -62,19 +65,22 @@ export function PollCard({ poll, onChange }: Props) {
     haptic("light");
     if (updated) {
       onChange?.(updated);
+      const optionLabel = poll.options.find(o => o.id === optionId)?.label ?? "";
       logActivity({
         tripId: poll.trip_id,
         userId,
         displayName,
         kind: "poll_voted",
-        summary: `votó "${poll.options.find(o => o.id === optionId)?.label}" en "${poll.question}"`,
+        summary: t.polls.activity.voted
+          .replace("{option}", optionLabel)
+          .replace("{question}", poll.question),
         href: null,
       });
     }
-  }, [poll, userId, displayName, onChange, mode, client]);
+  }, [poll, userId, displayName, onChange, mode, client, t]);
 
   const handleDelete = useCallback(async () => {
-    if (!confirm(`¿Eliminar el poll "${poll.question}"?`)) return;
+    if (!confirm(t.polls.deletePrompt.replace("{question}", poll.question))) return;
     if (mode === "online" && client) {
       const ok = await deletePollOnline(client, poll.id);
       if (!ok) deleteLocalPoll(poll.trip_id, poll.id);
@@ -82,8 +88,8 @@ export function PollCard({ poll, onChange }: Props) {
       deleteLocalPoll(poll.trip_id, poll.id);
     }
     onChange?.(null);
-    toast("Poll eliminado", "info");
-  }, [poll, onChange, mode, client]);
+    toast(t.polls.deleted, "info");
+  }, [poll, onChange, mode, client, t]);
 
   const canDelete = poll.created_by === userId;
 
@@ -104,14 +110,14 @@ export function PollCard({ poll, onChange }: Props) {
               {deadlineText(poll)}
             </span>
             <span>·</span>
-            <span>{totalVotes} voto{totalVotes === 1 ? "" : "s"}</span>
+            <span>{totalVotes} {plural(locale, totalVotes, t.polls.voteCount)}</span>
           </p>
         </div>
         {canDelete && (
           <button
             onClick={handleDelete}
             className="text-muted-foreground hover:text-destructive p-1 pressable"
-            aria-label="Eliminar poll"
+            aria-label={t.polls.ariaDelete}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -121,7 +127,7 @@ export function PollCard({ poll, onChange }: Props) {
       {/* Options */}
       <ul className="space-y-1.5">
         {poll.options.map(opt => {
-          const t = tally.find(x => x.optionId === opt.id)!;
+          const ta = tally.find(x => x.optionId === opt.id)!;
           const mine = myVote === opt.id;
           return (
             <li key={opt.id}>
@@ -138,7 +144,7 @@ export function PollCard({ poll, onChange }: Props) {
                 {/* Progress fill */}
                 <div
                   className="absolute inset-y-0 left-0 bg-primary/10 transition-[width]"
-                  style={{ width: `${t.percent}%` }}
+                  style={{ width: `${ta.percent}%` }}
                   aria-hidden
                 />
                 <div className="relative flex items-center gap-2">
@@ -152,14 +158,14 @@ export function PollCard({ poll, onChange }: Props) {
                   <div className="flex items-center gap-1.5 shrink-0">
                     {mine && <CheckCircle className="w-3.5 h-3.5 text-primary" />}
                     <span className="text-[11px] font-bold tabular-nums w-9 text-right">
-                      {t.count} · {t.percent}%
+                      {ta.count} · {ta.percent}%
                     </span>
                   </div>
                 </div>
               </button>
-              {t.voters.length > 0 && (
+              {ta.voters.length > 0 && (
                 <p className="text-[10px] text-muted-foreground pl-9 mt-0.5 truncate">
-                  {t.voters.slice(0, 3).join(", ")}{t.voters.length > 3 ? ` +${t.voters.length - 3}` : ""}
+                  {ta.voters.slice(0, 3).join(", ")}{ta.voters.length > 3 ? ` +${ta.voters.length - 3}` : ""}
                 </p>
               )}
             </li>

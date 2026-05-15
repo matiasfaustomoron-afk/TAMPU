@@ -96,4 +96,18 @@ describe("maskPII / containsPII", () => {
     const twice = maskPII(once);
     expect(twice).toBe(once);
   });
+
+  it("enmascara CBU argentino (22 dígitos consecutivos)", () => {
+    const input = "Transferí a CBU 0170099220000067797370 antes del viernes.";
+    const out = maskPII(input);
+    expect(out).toContain("[CBU]");
+    expect(out).not.toContain("0170099220000067797370");
+  });
+
+  it("enmascara IBAN europeo (formato ES + dígitos + alfanumérico)", () => {
+    const input = "Mi IBAN es ES9121000418450200051332 para el pago.";
+    const out = maskPII(input);
+    expect(out).toContain("[IBAN]");
+    expect(out).not.toContain("ES9121000418450200051332");
+  });
 });

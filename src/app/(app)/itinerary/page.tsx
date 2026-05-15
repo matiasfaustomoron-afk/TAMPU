@@ -552,11 +552,11 @@ function ReservationGroup({
   const removeItem = useCallback(async () => {
     if (!editTarget) return;
     if (!confirm(`¿Eliminar "${editTarget.description}"?`)) return;
-    await deleteReservation(editTarget.id);
+    await deleteReservation({ id: editTarget.id, tripId: trip?.id });
     setEditTarget(null);
     toast("Eliminado", "info");
     onChanged();
-  }, [editTarget, deleteReservation, onChanged]);
+  }, [editTarget, deleteReservation, onChanged, trip?.id]);
 
   const sheetOpen = !!editTarget || newOpen;
   const closeSheet = () => { setEditTarget(null); setNewOpen(false); };

@@ -11,6 +11,7 @@ import {
   useDocuments,
   useBudgetSummary,
 } from "@/lib/hooks/use-trip-data";
+import { updateTripRecapPublic } from "@/lib/data/trips";
 import { generateTripSummaryPDF } from "@/lib/pdf/trip-summary";
 import { reportError } from "@/lib/utils/errors";
 import { useSupabase } from "@/lib/context/supabase-provider";
@@ -27,7 +28,7 @@ import { useTampuPlus, invalidateTampuPlusCache } from "@/lib/billing/use-tampu-
 import { hasPasscode, isUnlocked, lock as lockApp, onLockChange } from "@/lib/crypto/passcode";
 import { countLegacyPlainVaultBlobs, migrateLegacyVaultToEncrypted } from "@/lib/vault/storage";
 import Link from "next/link";
-import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown, Heart, MessageCircle } from "lucide-react";
+import { RefreshCw, Database, HardDrive, Languages, Map as MapIcon, Navigation, Sparkles, Eye, EyeOff, Check, Download, Upload, Loader2, Bell, BarChart3, Trash2, FileText, Lock, Unlock, ShieldCheck, ShieldAlert, Zap, Key, Crown, Heart, MessageCircle, Share2 } from "lucide-react";
 import { useRef } from "react";
 import { downloadBackup, importBackup } from "@/lib/backup";
 import { getBriefConfig, setBriefConfig, type DailyBriefConfig } from "@/lib/daily-brief";
@@ -46,13 +47,46 @@ import { verifyTurnstileToken } from "@/lib/security/verify-turnstile";
 export default function SettingsPage() {
   const { t, locale, setLocale, formatCurrency } = useI18n();
   const { data: trip, loading } = useActiveTrip();
-  const { mode, user } = useSupabase();
+  const { mode, user, client: supabaseClient } = useSupabase();
   const router = useRouter();
   const { data: reservations } = useReservations(trip?.id);
   const { data: tripDays } = useTripDays(trip?.id);
   const { data: documents } = useDocuments(trip?.id);
   const { data: budget } = useBudgetSummary();
   const [pdfBusy, setPdfBusy] = useState(false);
+
+  // ─── Compartir mi viaje (recap_public toggle, Iter 6) ────────────────
+  // El trip viene de useActiveTrip() que ahora incluye `recap_public` en el
+  // SELECT (ver lib/data/trips.ts). Lo casteamos porque el tipo Trip aún no
+  // declara la columna agregada en migration 00038.
+  const recapPublicInitial = (trip as (typeof trip & { recap_public?: boolean }) | null)?.recap_public ?? false;
+  const [recapPublic, setRecapPublic] = useState<boolean>(recapPublicInitial);
+  const [recapBusy, setRecapBusy] = useState(false);
+  useEffect(() => {
+    setRecapPublic(recapPublicInitial);
+  }, [recapPublicInitial]);
+
+  const handleRecapPublicToggle = async (next: boolean) => {
+    if (!trip?.id || !supabaseClient) {
+      toast("No hay un viaje activo. Activá uno desde Viajes.", "info");
+      return;
+    }
+    const prev = recapPublic;
+    setRecapPublic(next); // optimistic
+    setRecapBusy(true);
+    try {
+      await updateTripRecapPublic(supabaseClient, trip.id, next);
+      toast(
+        next ? "Recap público activado · ya podés compartir el link" : "Recap público desactivado",
+        "success",
+      );
+    } catch (err) {
+      setRecapPublic(prev); // rollback
+      toast(`No pudimos actualizar: ${(err as Error).message}`, "error");
+    } finally {
+      setRecapBusy(false);
+    }
+  };
 
   // ─── Tampu+ Lifetime status ────────────────────────────────────────
   // Resuelve si el user ya compró el upgrade lifetime (USD 29). Cache 5min.
@@ -614,6 +648,53 @@ export default function SettingsPage() {
                 Restaurar compra
               </Button>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Compartir mi viaje (recap_public, Iter 6) ─── */}
+      {/* Toggle del flag `trips.recap_public`. Sin esto activo, el endpoint   */}
+      {/* /api/recap/[tripId] devuelve 404 (privacy by default). Con el toggle */}
+      {/* ON el botón "Compartir recap" en Hoy abre el sheet nativo / clipboard*/}
+      <Card id="share-trip" className="border-l-4 border-l-primary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Share2 className="w-4 h-4" />
+            Compartir mi viaje
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Activá esto para que cualquiera con el link <code className="bg-muted px-1 py-0.5 rounded">/recap/&lt;tripId&gt;</code> vea un preview rico (og:image)
+            del viaje en WhatsApp, Twitter, iMessage. <strong>Default: apagado</strong> — privacy by default.
+          </p>
+          <label className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 cursor-pointer">
+            <span className="text-sm font-medium">
+              {recapPublic ? "Permitir compartir recap público · activo" : "Permitir compartir recap público"}
+            </span>
+            <input
+              type="checkbox"
+              checked={recapPublic}
+              disabled={!trip?.id || recapBusy || mode !== "online"}
+              onChange={(e) => void handleRecapPublicToggle(e.target.checked)}
+              className="w-5 h-5"
+              aria-label="Permitir compartir recap público"
+            />
+          </label>
+          {!recapPublic && (
+            <p className="text-[11px] text-warning leading-relaxed">
+              Hoy: <code>/recap/{trip?.id ?? "&lt;id&gt;"}</code> devuelve 404 hasta que actives este toggle.
+            </p>
+          )}
+          {!trip?.id && (
+            <p className="text-[10px] text-muted-foreground">
+              No hay viaje activo. Activá uno desde Viajes para configurar esta opción.
+            </p>
+          )}
+          {mode !== "online" && (
+            <p className="text-[10px] text-muted-foreground">
+              Solo funciona en modo online (Supabase configurado).
+            </p>
           )}
         </CardContent>
       </Card>

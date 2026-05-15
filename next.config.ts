@@ -28,6 +28,9 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "upload.wikimedia.org" },
       { protocol: "https", hostname: "images.unsplash.com" },
+      // Supabase Storage public URLs viven en `<project-ref>.supabase.co`.
+      // Wildcard cubre cualquier proyecto sin pinear el ref a la config.
+      { protocol: "https", hostname: "*.supabase.co" },
     ],
   },
 

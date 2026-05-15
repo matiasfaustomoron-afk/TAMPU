@@ -167,7 +167,7 @@ export default function VaultPage() {
       const noteParts: string[] = [];
       if (result.extracted.provider) noteParts.push(result.extracted.provider);
       if (result.extracted.flight_route) noteParts.push(result.extracted.flight_route);
-      if (result.extracted.locator) noteParts.push(`Loc: ${result.extracted.locator}`);
+      if (result.extracted.locator) noteParts.push(`${t.vault.locationShort} ${result.extracted.locator}`);
       if (noteParts.length) setUploadNotes(noteParts.join(" · "));
       setLastClassification(`${result.source === "claude" ? "IA" : "heurística"} · ${result.category} · ${result.confidence}`);
       track(EVENTS.VAULT_CLASSIFY, { category: result.category, confidence: result.confidence, source: result.source });
@@ -299,7 +299,7 @@ export default function VaultPage() {
     if (!confirm(`¿Eliminar "${att.file_name}"?`)) return;
     if (mode === "online" && client) {
       await client.storage.from("travel-vault").remove([att.storage_path]);
-      await deleteAttachmentMut(att.id);
+      await deleteAttachmentMut({ id: att.id, tripId: trip?.id });
       // Mutation invalida cache; el effect resincroniza `files` via attachmentsRaw.
     } else {
       if (att.storage_path.startsWith("idb:")) await deleteVaultBlob(att.id).catch(() => {});
@@ -351,10 +351,10 @@ export default function VaultPage() {
   if (loading) return <div className="animate-pulse space-y-4">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-lg" />)}</div>;
 
   return (
-    <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in" role="region" aria-label="Documentos del viaje">
+    <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in" role="region" aria-label={t.vault.ariaLabel}>
       <LargeTitle
         eyebrow={`${files.length} pases · ${formatSize(usage.bytes)}${mode === "demo" ? " · solo en este iPhone" : ""}`}
-        title="Documentos"
+        title={t.vault.title}
         serif
       />
 
@@ -363,10 +363,10 @@ export default function VaultPage() {
         <button
           onClick={() => setShowUpload(true)}
           className="pressable w-full flex items-center justify-center gap-3 h-14 rounded-2xl text-white font-semibold text-[15px] shadow-md tampu-gradient-warm"
-          aria-label="Subir un documento desde el dispositivo"
+          aria-label={t.vault.uploadSheetTitle}
         >
           <Plus className="w-5 h-5" strokeWidth={2.4} aria-hidden />
-          {files.length === 0 ? "Subir tu primer documento" : "Subir documento"}
+          {files.length === 0 ? t.vault.uploadFirst : t.vault.upload}
         </button>
         {/* CTA secundaria: la feature 10x */}
         <Link
@@ -449,7 +449,7 @@ export default function VaultPage() {
         </Card>
       )}
 
-      <Sheet open={showUpload} onClose={() => setShowUpload(false)} title="Subir documento">
+      <Sheet open={showUpload} onClose={() => setShowUpload(false)} title={t.vault.uploadSheetTitle}>
         <div className="space-y-4 pb-4">
             <input
               ref={fileInputRef}
@@ -502,17 +502,17 @@ export default function VaultPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase text-muted-foreground">Nombre</label>
+                <label className="text-[10px] uppercase text-muted-foreground">{t.vault.name}</label>
                 <Input value={uploadName} onChange={e => setUploadName(e.target.value)} placeholder={t.vault.namePlaceholder} className="mt-1" />
               </div>
               <div>
-                <label className="text-[10px] uppercase text-muted-foreground">Categoría</label>
+                <label className="text-[10px] uppercase text-muted-foreground">{t.vault.category}</label>
                 <SelectNative value={uploadCategory} onChange={e => setUploadCategory(e.target.value)} className="mt-1">
                   {CATEGORIES.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
                 </SelectNative>
               </div>
               <div>
-                <label className="text-[10px] uppercase text-muted-foreground">Notas (opcional)</label>
+                <label className="text-[10px] uppercase text-muted-foreground">{t.vault.notes}</label>
                 <Input value={uploadNotes} onChange={e => setUploadNotes(e.target.value)} placeholder="..." className="mt-1" />
               </div>
             </div>
@@ -521,11 +521,11 @@ export default function VaultPage() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={classifyAuto} onChange={e => setClassifyAuto(e.target.checked)} />
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
-                Clasificar con IA al subir
+                {t.vault.classifyAI}
               </label>
               {classifying && (
                 <span className="flex items-center gap-1 text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Analizando...
+                  <Loader2 className="w-3 h-3 animate-spin" /> {t.vault.analyzing}
                 </span>
               )}
               {!classifying && lastClassification && (
@@ -539,7 +539,7 @@ export default function VaultPage() {
               <div className="rounded-md bg-success/10 border border-success/30 p-2 text-xs flex items-start gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium">Auto-vinculará a:</p>
+                  <p className="font-medium">{t.vault.autoLinkTo}:</p>
                   <p className="text-muted-foreground">{linkedReservationLabel}</p>
                 </div>
               </div>
@@ -632,7 +632,7 @@ export default function VaultPage() {
       {/* Retention info footer */}
       <div className="px-4 pt-8 pb-2">
         <div className="ios-card p-4">
-          <p className="text-[12px] font-semibold mb-1.5">¿Cuánto duran mis archivos?</p>
+          <p className="text-[12px] font-semibold mb-1.5">{t.vault.retentionFaq}</p>
           <p className="text-[11.5px] text-muted-foreground leading-relaxed">
             Viven <strong>indefinidamente</strong> en este dispositivo (en IndexedDB privada del navegador / app),
             mientras no los borres manualmente, no desinstales la app y no limpies los datos del sitio.

@@ -330,9 +330,19 @@ const en: Dictionary = {
   vault: {
     title: "Documents",
     subtitle: "Your travel passes and documents",
-    upload: "Upload file",
-    noFiles: "No files yet",
+    upload: "Upload document",
     uploadFirst: "Upload your first document",
+    uploadSheetTitle: "Upload document",
+    ariaLabel: "Trip documents",
+    name: "Name",
+    category: "Category",
+    notes: "Notes",
+    classifyAI: "Classify with AI",
+    analyzing: "Analyzing...",
+    autoLinkTo: "Will auto-link to",
+    retentionFaq: "How long do my files last?",
+    locationShort: "Loc:",
+    noFiles: "No files yet",
     favorites: "Favorites",
     critical: "Critical",
     offlineReady: "Offline ready",
@@ -355,6 +365,46 @@ const en: Dictionary = {
       receipt: "Receipt",
       other: "Other",
     },
+    attach: {
+      savedToVault: "saved to Vault",
+      deleted: "Document deleted",
+      attachAnother: "Attach another",
+      attachPdfImage: "Attach PDF / image",
+      offlineFooter: "Stored offline in your Vault and linked to this",
+      itemReservation: "item",
+      itemRecord: "record",
+    },
+  },
+
+  members: {
+    roles: {
+      owner: "Owner",
+      editor: "Editor",
+      viewer: "Viewer",
+    },
+  },
+
+  comments: {
+    commentCount: { one: "comment", other: "comments" },
+    commentEmpty: "Comment",
+    hideResolved: "Hide resolved",
+    showResolved: { one: "Show {count} resolved", other: "Show {count} resolved" },
+    placeholder: "Write a comment…",
+    addPlaceholder: "Add a comment…",
+    replyTo: "Reply to {name}…",
+    reply: "reply",
+    cancel: "cancel",
+    resolvedBy: "Resolved",
+    resolvedByName: "Resolved by {name}",
+    deletePrompt: "Delete this comment?",
+    aria: {
+      react: "React",
+      reactWith: "React with {emoji}",
+      reopen: "Reopen",
+      resolve: "Resolve",
+      delete: "Delete",
+      send: "Send",
+    },
   },
   journal: {
     title: "Journal",
@@ -365,6 +415,14 @@ const en: Dictionary = {
     all: "All",
     photoMoment: "Trip moment",
     addedToDiary: "added to journal",
+    printBook: {
+      bindings: {
+        softcover: "Softcover",
+        hardcover: "Hardcover",
+        lay_flat: "Lay-flat premium",
+      },
+      defaultTitlePrefix: "My trip to",
+    },
   },
   budgetCategories: {
     flights: "Flights",
@@ -647,6 +705,13 @@ const en: Dictionary = {
     emptyAll: "No polls yet.",
     create: "Create poll",
     closed: "Closed",
+    deleted: "Poll deleted",
+    deletePrompt: "Delete poll \"{question}\"?",
+    voteCount: { one: "vote", other: "votes" },
+    ariaDelete: "Delete poll",
+    activity: {
+      voted: "voted \"{option}\" on \"{question}\"",
+    },
   },
 
   inbox: {

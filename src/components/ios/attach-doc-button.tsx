@@ -9,6 +9,7 @@ import { useActiveTrip } from "@/lib/hooks/use-trip-data";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import type { Attachment } from "@/lib/types/database";
 import { cn } from "@/lib/utils/helpers";
+import { useI18n } from "@/i18n/provider";
 
 interface AttachDocButtonProps {
   entityType: Attachment["entity_type"];
@@ -42,6 +43,7 @@ function saveAttachmentsToStore(tripId: string, all: Attachment[]) {
 export function AttachDocButton({
   entityType, entityId, category, hint, compact, className,
 }: AttachDocButtonProps) {
+  const { t } = useI18n();
   const { data: trip } = useActiveTrip();
   const { mode } = useSupabase();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +86,7 @@ export function AttachDocButton({
       const all: Attachment[] = raw ? JSON.parse(raw) : [];
       saveAttachmentsToStore(trip.id, [newAtt, ...all]);
       haptic("medium");
-      toast(`${f.name} guardado en Cartera`, "success");
+      toast(`${f.name} ${t.vault.attach.savedToVault}`, "success");
       refresh();
     } catch (e) {
       toast(`No se pudo guardar: ${(e as Error).message}`, "error");
@@ -92,7 +94,7 @@ export function AttachDocButton({
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [trip, entityType, entityId, category, refresh]);
+  }, [trip, entityType, entityId, category, refresh, t]);
 
   const handleDelete = useCallback(async (att: Attachment) => {
     if (!trip) return;
@@ -102,9 +104,9 @@ export function AttachDocButton({
     const all: Attachment[] = raw ? JSON.parse(raw) : [];
     saveAttachmentsToStore(trip.id, all.filter(a => a.id !== att.id));
     haptic("light");
-    toast("Documento eliminado", "info");
+    toast(t.vault.attach.deleted, "info");
     refresh();
-  }, [trip, refresh]);
+  }, [trip, refresh, t]);
 
   const handleOpen = useCallback(async (att: Attachment) => {
     if (att.storage_path.startsWith("idb:")) {
@@ -190,7 +192,7 @@ export function AttachDocButton({
           className="pressable flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors text-[13px] font-medium disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
-          {attachments.length > 0 ? "Adjuntar otro" : (hint || "Adjuntar PDF / imagen")}
+          {attachments.length > 0 ? t.vault.attach.attachAnother : (hint || t.vault.attach.attachPdfImage)}
         </button>
         {nativeAvail && (
           <button
@@ -214,7 +216,7 @@ export function AttachDocButton({
       />
 
       <p className="text-[10px] text-muted-foreground">
-        Se guarda offline en tu Cartera y queda asociado a este {entityType === "reservation" ? "ítem" : "registro"}.
+        {t.vault.attach.offlineFooter} {entityType === "reservation" ? t.vault.attach.itemReservation : t.vault.attach.itemRecord}.
       </p>
     </div>
   );

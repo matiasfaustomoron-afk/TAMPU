@@ -177,7 +177,12 @@ async function callAnthropicRich(key: string, opts: LLMCallOpts): Promise<LLMCal
       body: JSON.stringify({
         model,
         max_tokens: opts.maxTokens ?? 1024,
-        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        // Default 0.2 (JSON-strict friendly) en vez del default 1.0 de Anthropic.
+        // La mayoría de los endpoints Tampu (categorize, parse-booking, classify,
+        // airport-info, parse-email) son JSON-strict y un temperature alto causa
+        // hallucination/formatos rotos. Endpoints que necesitan prosa más natural
+        // (assistant, generate-itinerary) overridean explícito con 0.6.
+        temperature: opts.temperature ?? 0.2,
         // Prompt caching: el system prompt se cachea con TTL ephemeral (5 min).
         // En las llamadas siguientes con el mismo system, Anthropic descuenta
         // ~90% del cost de input tokens. Estructura: array de blocks con

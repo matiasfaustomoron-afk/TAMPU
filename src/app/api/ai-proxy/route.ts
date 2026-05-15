@@ -50,6 +50,8 @@ interface ProxyBody {
   userMessage: string;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Override del default 0.2 server-side (clamped 0..1). */
+  temperature?: number;
 }
 
 // Hard caps server-side — no confiamos en lo que pida el client.
@@ -97,14 +99,22 @@ export async function POST(req: NextRequest) {
   const decision = await canCallProxy(req);
   if (!decision.ok) {
     if (decision.reason === "disabled") {
+      // 503 disabled: el proxy NO existe (TAMPU key no configurada). Hint al
+      // client de reintentar en 1h por si el operator lo habilita; en la
+      // práctica el client debería caer a BYOK / heurístico inmediatamente.
       return withCors(
         NextResponse.json(
           { error: "proxy_disabled", hint: "Configurá tu key en /settings (Anthropic o Gemini)." },
-          { status: 503 },
+          { status: 503, headers: { "Retry-After": "3600" } },
         ),
         origin,
       );
     }
+    // 429 rate_limited: SIEMPRE garantizar el header Retry-After (spec RFC
+    // 6585). Si por algún motivo no tenemos resetIn (fallback defensivo),
+    // mandamos 60s. Antes, cuando resetIn era 0 / undefined, el header se
+    // omitía y los clients HTTP-conformantes no podían backoff automático.
+    const retryAfter = String(decision.resetIn ?? 60);
     return withCors(
       NextResponse.json(
         {
@@ -116,7 +126,7 @@ export async function POST(req: NextRequest) {
         },
         {
           status: 429,
-          headers: decision.resetIn ? { "Retry-After": String(decision.resetIn) } : undefined,
+          headers: { "Retry-After": retryAfter },
         },
       ),
       origin,
@@ -127,11 +137,21 @@ export async function POST(req: NextRequest) {
   const key = process.env.TAMPU_ANTHROPIC_KEY;
   if (!key) {
     // Race condition: canCallProxy chequea esto, pero por las dudas
-    return withCors(NextResponse.json({ error: "proxy_disabled" }, { status: 503 }), origin);
+    return withCors(
+      NextResponse.json(
+        { error: "proxy_disabled" },
+        { status: 503, headers: { "Retry-After": "3600" } },
+      ),
+      origin,
+    );
   }
 
   const maxTokens = Math.min(body.maxTokens ?? 1024, HARD_CAP_MAX_TOKENS);
   const timeoutMs = Math.min(body.timeoutMs ?? 25_000, HARD_CAP_TIMEOUT_MS);
+  // Default 0.2 server-side — el proxy es usado para clasificación/parsing
+  // JSON-strict por defecto. Si el client quiere prosa, manda body.temperature
+  // explícito (clamped 0..1 para no caer en valores inválidos).
+  const temperature = Math.max(0, Math.min(1, body.temperature ?? 0.2));
 
   let json: AnthropicResponse;
   try {
@@ -149,6 +169,7 @@ export async function POST(req: NextRequest) {
         // (y ajustá el costo en PROXY-DESIGN.md).
         model: "claude-haiku-4-5",
         max_tokens: maxTokens,
+        temperature,
         // Prompt caching ephemeral — ahorra ~90% del input cost en hits
         // cacheados (system prompts repetidos entre llamadas del mismo
         // endpoint en la ventana de 5 min).

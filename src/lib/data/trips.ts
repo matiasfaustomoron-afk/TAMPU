@@ -5,7 +5,7 @@ import type { Trip } from "@/lib/types/database";
 // /trips, dashboard sidebar — no necesitan id de RLS internals ni timestamps
 // para render.
 const TRIP_LIST_COLUMNS =
-  "id, name, destination, start_date, end_date, status, is_active, base_currency, total_budget, contingency_percent, contingency_amount, alert_days_warning, alert_days_critical, budget_warning_threshold, budget_danger_threshold, description, created_at, updated_at, user_id";
+  "id, name, destination, start_date, end_date, status, is_active, base_currency, total_budget, contingency_percent, contingency_amount, alert_days_warning, alert_days_critical, budget_warning_threshold, budget_danger_threshold, description, created_at, updated_at, user_id, recap_public";
 
 export async function fetchTrips(db: SupabaseClient): Promise<Trip[]> {
   const { data, error } = await db.from("trips").select(TRIP_LIST_COLUMNS).order("is_active", { ascending: false });
@@ -72,4 +72,21 @@ export async function patchTrip(
   const { data, error } = await db.from("trips").update(patch).eq("id", tripId).select().maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Toggle del flag `recap_public` (migration 00038). Cuando es `true`, el endpoint
+ * `/api/recap/[tripId]` sirve el PNG público de og:image. Cuando es `false` (default),
+ * devuelve 404 — privacy by default.
+ *
+ * Usado por la sección "Compartir mi viaje" en /settings (Iter 6).
+ */
+export async function updateTripRecapPublic(
+  client: SupabaseClient,
+  tripId: string,
+  value: boolean,
+): Promise<{ ok: true }> {
+  const { error } = await client.from("trips").update({ recap_public: value }).eq("id", tripId);
+  if (error) throw new Error(error.message);
+  return { ok: true };
 }

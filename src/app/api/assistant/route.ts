@@ -332,6 +332,10 @@ async function callLLMAssistant(req: NextRequest, ctx: AssistantContext, questio
       // (trip entero, vault, airports). Si en el futuro queremos bajar costo,
       // baja a haiku acá.
       model: "sonnet",
+      // Prosa natural rioplatense. El default global del provider ahora es 0.2
+      // (JSON-strict), pero el assistant devuelve `answer` en lenguaje natural
+      // y un valor más alto da respuestas menos robóticas.
+      temperature: 0.6,
     });
   } catch (e) {
     console.warn("[assistant] callLLMRich threw, falling back to heuristic:", e);

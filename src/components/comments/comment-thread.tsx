@@ -18,6 +18,8 @@ import {
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { logActivity } from "@/lib/collab/activity-feed";
 import { haptic } from "@/lib/native/platform";
+import { useI18n } from "@/i18n/provider";
+import { plural } from "@/lib/i18n/plural";
 
 interface Props {
   tripId: string;
@@ -42,6 +44,7 @@ export function CommentThread({
   tripId, itemType, itemId, members = [], collapsible = true,
 }: Props) {
   const { user } = useSupabase();
+  const { t, locale } = useI18n();
   const userId = user?.id || "demo-user";
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Tú";
 
@@ -108,10 +111,10 @@ export function CommentThread({
   }, [tripId, itemType, itemId, userId, displayName, refresh]);
 
   const handleDelete = useCallback((commentId: string) => {
-    if (!confirm("¿Eliminar este comentario?")) return;
+    if (!confirm(t.comments.deletePrompt)) return;
     deleteComment(tripId, commentId);
     refresh();
-  }, [tripId, refresh]);
+  }, [tripId, refresh, t]);
 
   const handleResolve = useCallback((commentId: string, isResolved: boolean) => {
     if (isResolved) {
@@ -138,7 +141,7 @@ export function CommentThread({
       >
         <MessageCircle className="w-3 h-3" />
         <span>
-          {activeCount === 0 ? "Comentar" : `${activeCount} comentario${activeCount === 1 ? "" : "s"}`}
+          {activeCount === 0 ? t.comments.commentEmpty : `${activeCount} ${plural(locale, activeCount, t.comments.commentCount)}`}
         </span>
         {collapsible && (
           expanded
@@ -154,50 +157,52 @@ export function CommentThread({
               onClick={() => setShowResolved(s => !s)}
               className="text-[10.5px] text-muted-foreground hover:text-foreground pressable"
             >
-              {showResolved ? "Ocultar resueltos" : `Mostrar ${resolvedCount} resuelto${resolvedCount === 1 ? "" : "s"}`}
+              {showResolved
+                ? t.comments.hideResolved
+                : plural(locale, resolvedCount, t.comments.showResolved).replace("{count}", String(resolvedCount))}
             </button>
           )}
           {threads.length === 0 ? (
             <Composer
               members={members}
-              placeholder="Escribí un comentario…"
+              placeholder={t.comments.placeholder}
               onSubmit={body => handleSubmit(body, null)}
               autoFocus={false}
             />
           ) : (
             <>
               <ul className="space-y-2">
-                {threads.map(t => (
-                  <li key={t.root.id} className={`space-y-1.5 ${t.root.resolved_at ? "opacity-60" : ""}`}>
+                {threads.map(th => (
+                  <li key={th.root.id} className={`space-y-1.5 ${th.root.resolved_at ? "opacity-60" : ""}`}>
                     <CommentRow
-                      comment={t.root}
+                      comment={th.root}
                       userId={userId}
-                      onReply={() => setReplyTo(t.root.id)}
-                      onDelete={() => handleDelete(t.root.id)}
-                      onResolve={() => handleResolve(t.root.id, !!t.root.resolved_at)}
-                      onReaction={(emoji) => handleReaction(t.root.id, emoji)}
+                      onReply={() => setReplyTo(th.root.id)}
+                      onDelete={() => handleDelete(th.root.id)}
+                      onResolve={() => handleResolve(th.root.id, !!th.root.resolved_at)}
+                      onReaction={(emoji) => handleReaction(th.root.id, emoji)}
                     />
-                    {t.replies.length > 0 && (
+                    {th.replies.length > 0 && (
                       <ul className="pl-6 space-y-1.5">
-                        {t.replies.map(r => (
+                        {th.replies.map(r => (
                           <CommentRow
                             key={r.id}
                             comment={r}
                             userId={userId}
                             isReply
-                            onReply={() => setReplyTo(t.root.id)}
+                            onReply={() => setReplyTo(th.root.id)}
                             onDelete={() => handleDelete(r.id)}
                             onReaction={(emoji) => handleReaction(r.id, emoji)}
                           />
                         ))}
                       </ul>
                     )}
-                    {replyTo === t.root.id && (
+                    {replyTo === th.root.id && (
                       <div className="pl-6">
                         <Composer
                           members={members}
-                          placeholder={`Responder a ${t.root.author_name}…`}
-                          onSubmit={body => handleSubmit(body, t.root.id)}
+                          placeholder={t.comments.replyTo.replace("{name}", th.root.author_name)}
+                          onSubmit={body => handleSubmit(body, th.root.id)}
                           onCancel={() => setReplyTo(null)}
                           autoFocus
                           compact
@@ -210,7 +215,7 @@ export function CommentThread({
               {/* New root comment composer */}
               <Composer
                 members={members}
-                placeholder="Agregar comentario…"
+                placeholder={t.comments.addPlaceholder}
                 onSubmit={body => handleSubmit(body, null)}
                 autoFocus={false}
                 compact
@@ -234,6 +239,7 @@ function CommentRow({
   onResolve?: () => void;
   onReaction?: (emoji: string) => void;
 }) {
+  const { t } = useI18n();
   const isMine = comment.author_id === userId;
   const deleted = !!comment.deleted_at;
   const resolved = !!comment.resolved_at;
@@ -248,7 +254,9 @@ function CommentRow({
         <span className="text-[10.5px] text-muted-foreground">{commentAgo(comment.created_at)}</span>
         {resolved && (
           <span className="text-[10px] text-success font-medium">
-            ✓ Resuelto{comment.resolved_by_name ? ` por ${comment.resolved_by_name}` : ""}
+            ✓ {comment.resolved_by_name
+              ? t.comments.resolvedByName.replace("{name}", comment.resolved_by_name)
+              : t.comments.resolvedBy}
           </span>
         )}
         {!deleted && !isReply && (
@@ -256,14 +264,14 @@ function CommentRow({
             onClick={onReply}
             className="text-[10.5px] text-muted-foreground hover:text-primary ml-1 pressable"
           >
-            responder
+            {t.comments.reply}
           </button>
         )}
         {!deleted && onReaction && (
           <button
             onClick={() => setPickerOpen(p => !p)}
             className="text-muted-foreground hover:text-foreground p-0.5 pressable"
-            aria-label="Reaccionar"
+            aria-label={t.comments.aria.react}
           >
             <SmilePlus className="w-3 h-3" />
           </button>
@@ -272,8 +280,8 @@ function CommentRow({
           <button
             onClick={onResolve}
             className={`p-0.5 pressable ${resolved ? "text-success" : "text-muted-foreground hover:text-success"}`}
-            aria-label={resolved ? "Reabrir" : "Resolver"}
-            title={resolved ? "Reabrir" : "Resolver"}
+            aria-label={resolved ? t.comments.aria.reopen : t.comments.aria.resolve}
+            title={resolved ? t.comments.aria.reopen : t.comments.aria.resolve}
           >
             {resolved ? <RotateCcw className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
           </button>
@@ -282,7 +290,7 @@ function CommentRow({
           <button
             onClick={onDelete}
             className="text-muted-foreground hover:text-destructive ml-auto p-0.5 pressable"
-            aria-label="Eliminar"
+            aria-label={t.comments.aria.delete}
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -318,7 +326,7 @@ function CommentRow({
                   key={emoji}
                   onClick={() => { onReaction?.(emoji); setPickerOpen(false); }}
                   className="text-[14px] px-1 hover:scale-110 transition-transform pressable"
-                  aria-label={`Reaccionar ${emoji}`}
+                  aria-label={t.comments.aria.reactWith.replace("{emoji}", emoji)}
                 >
                   {emoji}
                 </button>
@@ -353,6 +361,7 @@ function Composer({
   autoFocus?: boolean;
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -425,7 +434,7 @@ function Composer({
           onClick={submit}
           disabled={!value.trim()}
           className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 pressable shrink-0"
-          aria-label="Enviar"
+          aria-label={t.comments.aria.send}
         >
           <Send className="w-3.5 h-3.5" />
         </button>
@@ -434,7 +443,7 @@ function Composer({
             onClick={onCancel}
             className="text-[11px] text-muted-foreground hover:text-foreground pressable"
           >
-            cancelar
+            {t.comments.cancel}
           </button>
         )}
       </div>

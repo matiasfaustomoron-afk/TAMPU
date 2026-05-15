@@ -21,3 +21,17 @@ export function createClient(): SupabaseClient | null {
   cached = createBrowserClient(supabaseUrl, supabaseAnonKey);
   return cached;
 }
+
+/**
+ * Resetea el singleton cacheado. Pensado para llamar desde el handler de
+ * SIGNED_OUT (en supabase-provider o donde sea que se suscriba a
+ * `onAuthStateChange`): después de logout, la siguiente invocación de
+ * `createClient()` devolverá una instancia nueva con storage limpio, en vez
+ * de reciclar el client que tenía la sesión vieja en memoria.
+ *
+ * NO se llama auto desde acá — el wiring queda en manos del caller para no
+ * acoplar este módulo a la lógica de auth.
+ */
+export function resetClient(): void {
+  cached = null;
+}

@@ -97,7 +97,13 @@ export default function TripsPage() {
   const closeWizard = useCallback(() => { setOpen(false); reset(); }, [reset]);
 
   const handleCreate = useCallback(async () => {
-    if (!name || !destination || !start || !end) return;
+    if (!name || !destination || !start || !end) {
+      // Antes: silent return — usuario clickeaba "Crear viaje" y no pasaba nada.
+      // Ahora damos feedback explícito con un toast warn (no error, es validación).
+      toast("Completá todos los campos requeridos", "warn");
+      haptic("light");
+      return;
+    }
     setBusy(true);
     try {
       const totalBudget = parseFloat(budget) || 0;

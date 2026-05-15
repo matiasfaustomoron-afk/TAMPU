@@ -263,10 +263,10 @@ export default function ExpensesPage() {
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm("¿Eliminar este gasto?")) return;
-    await deleteExpense(id);
+    await deleteExpense({ id, tripId: trip?.id });
     toast("Gasto eliminado", "info");
     refetch();
-  }, [deleteExpense, refetch]);
+  }, [deleteExpense, refetch, trip?.id]);
 
   // ─── HOOKS ORDER: useCountUp DEBE llamarse SIEMPRE antes del early return ───
   // Previous bug: useCountUp estaba después del `if (loading) return` → cuando

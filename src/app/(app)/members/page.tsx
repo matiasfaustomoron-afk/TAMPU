@@ -10,16 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { toast } from "@/components/ios/toast";
-import { useActiveTrip, useTripMembers } from "@/lib/hooks/use-trip-data";
+import { useActiveTrip, useTripMembers, useMutations } from "@/lib/hooks/use-trip-data";
 import { useTripRealtime } from "@/lib/hooks/use-trip-realtime";
 import { useSupabase } from "@/lib/context/supabase-provider";
-import { setActiveTrip } from "@/lib/data/trips";
 import {
   fetchPendingInvites,
   revokeMember,
   removeMember as removeMemberData,
 } from "@/lib/data/members";
 import { track, EVENTS } from "@/lib/analytics";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * /share — gestión de miembros del viaje activo.
@@ -48,11 +48,6 @@ interface PendingInvite extends Member {
   trip?: { name?: string; destination?: string };
 }
 
-const ROLE_LABEL: Record<Member["role"], string> = {
-  owner: "Owner",
-  editor: "Editor",
-  viewer: "Visualización",
-};
 const ROLE_TONE: Record<Member["role"], string> = {
   owner: "tampu-icon tampu-icon-terracota",
   editor: "tampu-icon tampu-icon-cardon",
@@ -60,6 +55,12 @@ const ROLE_TONE: Record<Member["role"], string> = {
 };
 
 function SharePageContent() {
+  const { t } = useI18n();
+  const ROLE_LABEL: Record<Member["role"], string> = {
+    owner: t.members.roles.owner,
+    editor: t.members.roles.editor,
+    viewer: t.members.roles.viewer,
+  };
   const { data: trip } = useActiveTrip();
   const { client, mode } = useSupabase();
   const router = useRouter();
@@ -68,6 +69,10 @@ function SharePageContent() {
   // path queda eliminado — invalidaciones via mutations + realtime mantienen
   // el cache fresco.
   const { data: members = [], isLoading: membersLoading, refetch: refetchMembers } = useTripMembers(trip?.id);
+  // `activateTrip` mutation invalida ["activeTrip", mode] al resolver, lo que
+  // garantiza que /today lea el trip recién activado en vez del cache previo.
+  // Usar la raw `setActiveTrip(client, ...)` no invalidaba el cache → race.
+  const { activateTrip } = useMutations();
   // pendingForMe sigue siendo local porque la query es por email (no por
   // tripId), no cabe en `useTripMembers`. Lo migramos al data layer
   // (`fetchPendingInvites`) para que toda la lógica SQL viva en /lib/data.
@@ -195,10 +200,13 @@ function SharePageContent() {
           const acceptedTripId: string | undefined = json?.membership?.trip_id ?? json?.trip_id;
           if (acceptedTripId && client) {
             try {
-              await setActiveTrip(client, acceptedTripId);
+              // Esperar a que la mutation termine (RPC + invalidación del
+              // cache `["activeTrip", mode]`) ANTES de navegar a /today,
+              // si no /today renderea con el trip viejo del cache.
+              await activateTrip(acceptedTripId);
               router.push("/today");
             } catch (err) {
-              console.warn("[members] setActiveTrip after accept failed:", err);
+              console.warn("[members] activateTrip after accept failed:", err);
             }
           }
         }
@@ -206,7 +214,7 @@ function SharePageContent() {
         toast("Error de red", "error");
       }
     },
-    [refetch, client, router],
+    [refetch, client, router, activateTrip],
   );
 
   const declineInvite = useCallback(

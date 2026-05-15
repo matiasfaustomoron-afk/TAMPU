@@ -12,18 +12,26 @@
 // todavía no tienen Twilio configurado.
 
 import { createHmac } from "crypto";
+import type { Twilio } from "twilio";
 
 const TWILIO_SANDBOX_FROM_DEFAULT = "whatsapp:+14155238886";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let twilioClientCache: any | null | undefined;
+// `undefined` = no se intentó cargar todavía; `null` = se intentó y falló (no
+// reintentamos en este proceso). Una vez seteado a un `Twilio`, las siguientes
+// invocaciones reusan la misma instancia.
+let twilioClientCache: Twilio | null | undefined;
+
+// El factory que devuelve `import("twilio")` no está bien tipado en el d.ts
+// de la dep (mezcla `default` export con la function call), así que lo
+// modelamos acá como narrow type sin recurrir a `any` afuera.
+type TwilioFactory = (sid: string, token: string) => Twilio;
+type TwilioModule = { default?: TwilioFactory } & TwilioFactory;
 
 /**
  * Devuelve el cliente Twilio o null si no se puede instanciar.
  * Cacheado: solo intentamos cargar el módulo una vez por proceso.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getTwilioClient(): Promise<any | null> {
+export async function getTwilioClient(): Promise<Twilio | null> {
   if (twilioClientCache !== undefined) return twilioClientCache;
 
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -38,15 +46,14 @@ export async function getTwilioClient(): Promise<any | null> {
   try {
     // Dynamic import: si la dep no está, cae al catch.
     // Mismo patrón que stripe / sentry.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod: any = await import("twilio").catch(() => null);
+    const mod = (await import("twilio").catch(() => null)) as TwilioModule | null;
     if (!mod) {
       // eslint-disable-next-line no-console
       console.warn("[twilio] paquete 'twilio' no instalado — corré `npm i twilio` para habilitar WhatsApp");
       twilioClientCache = null;
       return null;
     }
-    const factory = mod.default ?? mod;
+    const factory: TwilioFactory = mod.default ?? mod;
     twilioClientCache = factory(sid, token);
     return twilioClientCache;
   } catch (err) {
