@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { haptic } from "@/lib/native/platform";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * Asistente transversal — botón flotante presente en cualquier tab.
@@ -32,6 +33,7 @@ const HIDDEN_ROUTES = ["/assistant", "/welcome", "/login", "/onboarding"];
 
 export function AssistantFab() {
   const pathname = usePathname();
+  const { t } = useI18n();
   if (HIDDEN_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"))) {
     return null;
   }
@@ -40,8 +42,8 @@ export function AssistantFab() {
     <Link
       href="/assistant"
       onClick={() => haptic("light")}
-      aria-label="Abrir asistente"
-      title="Asistente IA"
+      aria-label={t.common.fabs.assistant}
+      title={t.more.items.asistenteIA}
       className="fixed z-40 right-4 w-14 h-14 rounded-2xl text-white shadow-[0_8px_24px_rgba(48,26,13,0.22),0_0_0_1px_rgba(255,255,255,0.10)_inset] tampu-gradient-warm hover:scale-105 hover:shadow-[0_12px_32px_rgba(48,26,13,0.28)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
       style={{ bottom: "calc(var(--fab-stack-1) + env(safe-area-inset-bottom))" }}
     >

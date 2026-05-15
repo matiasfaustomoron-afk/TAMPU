@@ -21,6 +21,10 @@ export interface LLMCallOpts {
    * Gemini ignora este flag — siempre usa 2.0 Flash.
    */
   model?: "haiku" | "sonnet";
+  /**
+   * Temperature 0-1. Default 0.2 JSON-strict, 0.7 prosa. Anthropic respeta esto si se pasa; default 1.0 sino.
+   */
+  temperature?: number;
 }
 
 /**
@@ -173,6 +177,7 @@ async function callAnthropicRich(key: string, opts: LLMCallOpts): Promise<LLMCal
       body: JSON.stringify({
         model,
         max_tokens: opts.maxTokens ?? 1024,
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
         // Prompt caching: el system prompt se cachea con TTL ephemeral (5 min).
         // En las llamadas siguientes con el mismo system, Anthropic descuenta
         // ~90% del cost de input tokens. Estructura: array de blocks con
@@ -247,7 +252,7 @@ async function callGeminiRich(key: string, opts: LLMCallOpts): Promise<LLMCallRe
         contents: [{ role: "user", parts }],
         generationConfig: {
           maxOutputTokens: opts.maxTokens ?? 1024,
-          temperature: 0.5,
+          temperature: opts.temperature ?? 0.2,
         },
       }),
     });

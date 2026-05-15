@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LargeTitle, IOSSection, IOSRow, IOSFeatureCard, Pill } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
 import { useActiveTrip, useReservations, useDocuments, useTripDays, useCities } from "@/lib/hooks/use-trip-data";
+import { useI18n } from "@/i18n/provider";
 import { buildEmergencyKit } from "@/lib/domain/emergency";
 import {
   AlertTriangle, Phone, Shield, Building2, Home, Plane, MapPin,
@@ -23,6 +24,7 @@ const KIND_ICON: Record<string, React.ReactNode> = {
 };
 
 export default function EmergencyPage() {
+  const { t } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: reservations } = useReservations(trip?.id);
   const { data: documents } = useDocuments(trip?.id);
@@ -215,7 +217,7 @@ export default function EmergencyPage() {
 
       {/* Mental checklist */}
       <section className="px-4 mb-8">
-        <p className="ios-eyebrow">Checklist mental</p>
+        <p className="ios-eyebrow">{t.emergency.mentalReview}</p>
         <div className="ios-card p-5 space-y-3 text-[13px] leading-relaxed">
           <ChecklistItem>Antes de llamar al seguro: anotá localizador, ubicación exacta, síntomas.</ChecklistItem>
           <ChecklistItem>Pedí <strong>GOP</strong> directa al hospital antes de cualquier traslado.</ChecklistItem>

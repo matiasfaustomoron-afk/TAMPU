@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Typewriter } from "@/components/ios/typewriter";
-import { Sparkles, Loader2, Check, AlertCircle, X, ChevronRight, RefreshCw, Settings, KeyRound } from "lucide-react";
+import { Sparkles, Check, AlertCircle, X, ChevronRight, RefreshCw, Settings, KeyRound } from "lucide-react";
 import { generateItinerary, type Interest, type Pace, type DraftItinerary } from "@/lib/ai/itinerary-generator";
 import { hasUserApiKey, getUserProvider } from "@/lib/ai/user-key";
 import { toast } from "@/components/ios/toast";
@@ -327,13 +327,16 @@ export function AIGeneratorSheet({ open, onClose, trip, onCommit, plannedRatio =
       )}
 
       {step === "loading" && (
-        <div className="py-12 text-center space-y-4 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div className="py-8 space-y-4 animate-fade-in">
+          <p className="text-[15px] font-semibold text-center">Pensando tu viaje a {trip.destination}…</p>
+          <div className="space-y-2 max-w-sm mx-auto">
+            <div className="skeleton h-4 rounded-md w-3/4" />
+            <div className="skeleton h-4 rounded-md w-full" />
+            <div className="skeleton h-4 rounded-md w-5/6" />
+            <div className="skeleton h-4 rounded-md w-2/3" />
           </div>
-          <p className="text-[15px] font-semibold">Pensando tu viaje a {trip.destination}…</p>
           <Typewriter
-            className="text-[12.5px] text-muted-foreground leading-relaxed block max-w-xs mx-auto"
+            className="text-[12.5px] text-muted-foreground leading-relaxed block max-w-xs mx-auto text-center"
             text={`Considerando intereses, ritmo y presupuesto. Esto puede tomar 20-40 segundos con Claude/Gemini.`}
             speedCps={50}
           />

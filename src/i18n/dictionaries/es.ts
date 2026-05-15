@@ -40,6 +40,12 @@ const es = {
     onTrack: "Al día",
     overBy: "Excede en",
     noActiveTrip: "Sin viaje activo",
+    share: "Compartir",
+    fabs: {
+      more: "Más opciones",
+      addExpense: "Agregar gasto",
+      assistant: "Abrir asistente",
+    },
   },
 
   // ─── NAV ───
@@ -229,6 +235,13 @@ const es = {
     noAlerts: "Sin alertas",
     allClear: "¡Todo en orden!",
     dynamicNote: "Generadas desde los datos actuales. Resolvé el problema para eliminar la alerta.",
+    eyebrow: "Notificaciones del viaje",
+    tripUnderControl: "No hay alertas activas. Tu viaje está bajo control.",
+    criticasShort: "Críticas",
+    avisos: "Avisos",
+    info: "Info",
+    viewAll: "Ver todas",
+    activeAlerts: { one: "alerta activa", other: "alertas activas" },
   },
 
   // ─── SETTINGS ───
@@ -834,6 +847,178 @@ const es = {
     errorPrefix: "No se pudo generar el pase",
     downloadedToast: "Pase descargado — abrilo desde tus archivos para agregarlo a Wallet",
     ariaLabel: "Agregar reserva a Apple Wallet",
+  },
+
+  // ─── MORE (page) ───
+  // Página /more — hub de navegación con todas las herramientas. Agrupado por
+  // sección. Mantener paridad EN/ES para que el <IOSRow> renderice sin gaps.
+  more: {
+    title: "Más",
+    subtitle: "Todas las herramientas",
+    personalizeToday: "Personalizar Hoy",
+    yourData: "Tus datos",
+    theme: "Tema",
+    appearance: "Apariencia",
+    activity: "Actividad",
+    versionTagline: "Tampu · v1.0 · La posta del viajero",
+    sections: {
+      asistente: "Asistente",
+      diario: "Diario",
+      viaje: "Viaje",
+      colaborar: "Colaborar",
+      dinero: "Dinero",
+      documentos: "Documentos",
+      antesDurante: "Antes y durante",
+      canales: "Canales de ingesta",
+      cuenta: "Cuenta",
+    },
+    items: {
+      asistenteIA: "Asistente IA",
+      asistenteIASub: "Preguntale lo que sea sobre tu viaje",
+      fotos: "Fotos del viaje",
+      fotosSub: "Capturá momentos · offline · con geotag",
+      cambiarViaje: "Cambiar de viaje",
+      cambiarViajeSub: "Ver todos / crear nuevo",
+      compartirViaje: "Compartir viaje",
+      compartirViajeSub: "Invitar compañeros · roles",
+      mapa: "Mapa",
+      mapaSub: "Ruta y POIs",
+      reservas: "Reservas",
+      reservasSub: "Tours, seguros, traslados",
+      tareas: "Tareas",
+      tareasSub: "Pendientes del viaje",
+      encuestas: "Encuestas",
+      encuestasSub: "Decidí con el grupo · A vs B vs C",
+      actividad: "Actividad reciente",
+      actividadSub: "Qué cambió en el viaje",
+      presupuesto: "Presupuesto",
+      presupuestoSub: "Plan vs real",
+      movimiento: "Movimiento",
+      movimientoSub: "Cuándo gastás",
+      compartido: "Compartido",
+      compartidoSub: "Quién paga qué",
+      visas: "Visas",
+      visasSub: "Requisitos por destino",
+      salud: "Salud",
+      saludSub: "Vacunas y certificados",
+      equipaje: "Equipaje",
+      equipajeSub: "Qué llevar",
+      importar: "Importar",
+      importarSub: "Pegá emails de confirmación",
+      sos: "SOS",
+      sosSub: "Emergencia por país",
+      alertas: "Alertas",
+      alertasSub: "Activas hoy",
+      whatsapp: "WhatsApp",
+      whatsappSub: "Mensajes parseados · vincular número",
+      inbox: "Inbox",
+      inboxSub: "Reenviá emails a Tampu",
+      passcode: "Passcode",
+      passcodeSub: "Cifrado at-rest de tus Documentos",
+      perfil: "Perfil",
+      ajustes: "Ajustes",
+      ajustesSub: "Idioma, API key, mapa, ubicación",
+    },
+  },
+
+  // ─── SPLIT (gastos compartidos) ───
+  split: {
+    title: "Compartido entre viajeros",
+    sharedExpenses: "Compartidos",
+    settlements: "Settlements",
+    balanceByPerson: "Balance por persona",
+    noTrip: "Sin viaje",
+    createOrPickTrip: "Crear o elegir viaje",
+    owes: "debe",
+    owesTo: "le deben",
+    algorithm: "Algoritmo: cada gasto compartido se reparte por igual. Calculamos balance neto por persona y emitimos el conjunto MÍNIMO de transferencias para que todos queden a cero (greedy creditor/debtor matching).",
+    allSettled: "Todo cuadrado.",
+    eyebrowShared: "Compartidos",
+    eyebrowSettlements: "Settlements mínimos",
+    people: "Personas",
+    noSharedYet: "No hay gastos compartidos todavía",
+    howTo: "Marcá un gasto como compartido en /expenses añadiendo en notas:",
+    subtitleCount: "gastos compartidos",
+    subtitleEmpty: "Sin gastos compartidos cargados",
+  },
+
+  // ─── MAP (page) ───
+  map: {
+    title: "Mapa del viaje",
+    noCitiesLoaded: "No hay ciudades cargadas",
+    loadCities: "Cargar ciudades",
+    eyebrowRoute: "Ruta",
+    eyebrowFlights: "Vuelos del viaje",
+    noFlights: "Sin vuelos cargados",
+    noCoords: "(sin coords)",
+    nights: { one: "noche", other: "noches" },
+    poisCurated: "POIs curados",
+    trackingPointsSaved: "puntos de tracking GPS guardados localmente",
+  },
+
+  // ─── EMERGENCY extras ───
+  emergency: {
+    mentalReview: "Repaso mental",
+  },
+
+  // ─── SETTINGS extras ───
+  settingsExtras: {
+    locationGpsTitle: "Ubicación GPS (opcional)",
+    locationOn: "Ubicación activada",
+    locationOff: "Ubicación desactivada",
+  },
+
+  // ─── ADDRESS (display) ───
+  address: {
+    shareAriaLabel: "Compartir dirección",
+    copyAriaLabel: "Copiar dirección",
+    copied: "Copiado",
+    copy: "Copiar",
+    shareTitle: "Mi dirección Tampu",
+  },
+
+  // ─── SYNC INDICATOR ───
+  sync: {
+    synced: "Sincronizado",
+    syncing: "Sincronizando…",
+    offline: "Sin conexión",
+    local: "Local",
+    tooltips: {
+      synced: "Tus datos están sincronizados con la nube",
+      syncing: "Refrescando datos de la nube",
+      offline: "Sin red — los cambios se guardan local y suben cuando vuelva conexión",
+      local: "Tus datos viven solo en este dispositivo (modo demo)",
+    },
+    ariaLabel: "Estado de sincronización",
+  },
+
+  // ─── POLLS.CREATE (sheet) ───
+  pollsCreate: {
+    title: "Nueva encuesta",
+    question: "Pregunta",
+    questionPlaceholder: "¿Hotel A o B? ¿Vamos al museo o al parque?",
+    options: "Opciones",
+    addOption: "+ agregar",
+    optionPlaceholder: "Opción",
+    detailOptional: "Detalle (opcional)",
+    removeAria: "Quitar opción",
+    deadlineOptional: "Deadline (opcional)",
+    deadlineHint: "Después del deadline la encuesta se cierra automáticamente.",
+    submit: "Crear encuesta",
+    createTrigger: "Crear encuesta",
+    createCompact: "Encuesta",
+    validationMinTwo: "Pregunta y al menos 2 opciones",
+    successToast: "Encuesta creada",
+  },
+
+  // ─── COMMAND.quickExpense (fab) ───
+  commandQuickExpense: {
+    title: "Gasto rápido",
+    optional: "(opcional)",
+    ariaLabel: "Agregar gasto",
+    ctaShort: "Agregar gasto rápido",
+    defaultDescription: "Gasto rápido",
+    hint: "Fecha = hoy · TC = 1.00 (editá en /expenses si necesitás precisión)",
   },
 
   // ─── IMPORT (paste-email flow) ───

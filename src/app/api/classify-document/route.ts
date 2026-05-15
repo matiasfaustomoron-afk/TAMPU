@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { selectProvider, callLLMRich } from "@/lib/ai/providers";
 import { maskPII } from "@/lib/ai/pii-filter";
-import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
+import { recordProxyCall, estimateCostUsd, canCallProxy, checkDailyBudget } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
 import { extractJson } from "@/lib/ai/json-extractor";
@@ -118,12 +118,25 @@ interface ClassifyLLMResponse {
   source: "byok" | "tampu" | "env" | "none";
 }
 
-async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<ClassifyLLMResponse | null> {
+async function llmClassify(req: NextRequest, body: ClassifyRequest): Promise<ClassifyLLMResponse | "rate_limited" | null> {
   // P1.12 — classify-document es el único endpoint server-side que usa visión
   // y typically corre sin BYOK (el user no quiere configurar key sólo para
   // clasificar un boarding). Habilitamos fallback al proxy de Tampu acá.
   const { provider, key, source } = selectProvider(req, { allowTampuFallback: true });
   if (!provider || !key) return null;
+
+  // SECURITY (sprint 05/2026): el path Tampu carga al budget global. ANTES de
+  // gastar tokens en una visión (Sonnet ~USD 0.01-0.05/call), chequear rate
+  // limit + circuit breaker global. BYOK / env bypassean este gate (paga el
+  // user). Sin esto un atacante podía mandar miles de docs y quemar la key
+  // del server sin ningún cap.
+  if (source === "tampu") {
+    const decision = await canCallProxy(req, "/api/classify-document");
+    if (!decision.ok) return "rate_limited";
+    const budget = await checkDailyBudget();
+    if (budget.exceeded) return "rate_limited";
+  }
+
   try {
     const isPdf = body.mime === "application/pdf";
     // PII mask en el filename hint (puede traer DNI/CUIT en el nombre del archivo).
@@ -175,6 +188,12 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: "File too large for IA classification (max ~6 MB)." }, { status: 413 }), origin);
   }
   const envelope = await llmClassify(req, body);
+  if (envelope === "rate_limited") {
+    return withCors(
+      NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "60" } }),
+      origin,
+    );
+  }
   if (envelope) {
     // Record real usage para budget / circuit breaker, ya sea hit o degraded.
     // Identifier per-user (`byok:user:<uuid>:classify-document` o

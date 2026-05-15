@@ -1,12 +1,19 @@
 // ─── GET /api/recap/[tripId] ──────────────────────────────────────────────
 //
 // Tampu Recap MVP — genera un PNG 1200x630 estilo Spotify Wrapped del viaje,
-// renderizado en el Edge con @vercel/og. Es público (sin auth) porque se usa
-// como `og:image` en `/recap/[tripId]` para preview en WhatsApp/Twitter/etc.
+// renderizado en el Edge con @vercel/og. Se sirve como `og:image` en
+// `/recap/[tripId]` para preview en WhatsApp/Twitter/etc.
 //
-// Service role bypassa RLS — OK porque el recap muestra solo metadata
-// agregada (nombre, destino, conteos) que el owner ya decidió compartir
-// al copiar el link público.
+// PERMISSION (Iter 5):
+//   Antes era público sin filtro: cualquier UUID guessable exponía nombre,
+//   destino, fechas y counts via service_role bypassing RLS. Ahora el owner
+//   tiene que activar `trips.recap_public = true` explícitamente (default
+//   false — privacy by default). Si está en false → 404. Esto preserva la
+//   ergonomía de servir el PNG sin auth (necesario para `og:image`) pero
+//   solo cuando el owner decidió compartir.
+//
+// TODO Iter 6+: signed token alternative al `recap_public` flag — permitiría
+// "compartí este link hasta el 1ro de junio" sin togglear un flag persistente.
 
 import { ImageResponse } from "@vercel/og";
 import { NextRequest } from "next/server";
@@ -27,16 +34,25 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
   const { data: trip } = await supa
     .from("trips")
-    .select("id, name, destination, start_date, end_date, total_budget, base_currency")
+    .select("id, name, destination, start_date, end_date, total_budget, base_currency, recap_public")
     .eq("id", tripId)
     .maybeSingle();
 
   if (!trip) return new Response("Not found", { status: 404 });
 
+  // Permission check — el recap solo es visible si el owner hizo opt-in
+  // explícito. Devolvemos 404 (no 403) para no confirmar la existencia del
+  // trip a alguien que adivinó el UUID.
+  // TODO Iter 6+: signed token alternative to recap_public flag.
+  if ((trip as { recap_public?: boolean }).recap_public !== true) {
+    return new Response("Not found", { status: 404 });
+  }
+
   const [
     { count: flightsCount },
     { count: documentsCount },
     { count: reservationsCount },
+    { data: cityRows },
   ] = await Promise.all([
     supa
       .from("reservations")
@@ -52,6 +68,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       .select("*", { count: "exact", head: true })
       .eq("trip_id", tripId)
       .eq("status", "confirmed"),
+    // Cities visited — usamos esta tabla para derivar países distintos.
+    // No tenemos lat/lng en `cities` ni en `reservations` (ver migrations
+    // 00004 y 00005), así que `total_distance_km` queda como TODO para
+    // cuando agreguemos geocoding al schema.
+    supa
+      .from("cities")
+      .select("country")
+      .eq("trip_id", tripId),
   ]);
 
   const start = new Date(trip.start_date);
@@ -60,6 +84,19 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     1,
     Math.round((end.getTime() - start.getTime()) / 86400000)
   );
+
+  // Countries distintos a partir de cities.country (case-insensitive trim).
+  // Si no hay cities seedeadas, fallback a 1 (el destino del trip cuenta como uno).
+  const countriesSet = new Set<string>();
+  for (const row of cityRows ?? []) {
+    const c = (row as { country?: string | null }).country;
+    if (c && c.trim()) countriesSet.add(c.trim().toLowerCase());
+  }
+  const countriesCount = countriesSet.size > 0 ? countriesSet.size : 1;
+
+  // TODO: journal_entries vive en localStorage del cliente — sin tabla server-side
+  // no podemos contar. Cuando exista `journal_entries` table, agregar count acá.
+  // TODO: total_distance_km — requiere lat/lng en cities o reservations. Skip por ahora.
 
   const tripName = trip.name ?? "";
   const tripDestination = trip.destination ?? "";
@@ -118,6 +155,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         >
           {[
             { label: "Días", value: String(days) },
+            { label: "Países", value: String(countriesCount) },
             { label: "Vuelos", value: String(flightsCount ?? 0) },
             { label: "Documentos", value: String(documentsCount ?? 0) },
             { label: "Reservas", value: String(reservationsCount ?? 0) },

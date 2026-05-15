@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, RefreshCw, HardDrive } from "lucide-react";
 import { useSupabase } from "@/lib/context/supabase-provider";
+import { useI18n } from "@/i18n/provider";
 import { computeSyncState, subscribeSyncState, type SyncState } from "@/lib/sync/status";
 
 /**
@@ -11,6 +12,7 @@ import { computeSyncState, subscribeSyncState, type SyncState } from "@/lib/sync
  */
 export function SyncIndicator() {
   const { mode } = useSupabase();
+  const { t } = useI18n();
   const [state, setState] = useState<SyncState>("demo");
 
   useEffect(() => {
@@ -28,14 +30,14 @@ export function SyncIndicator() {
   const { icon, label, tone, pulse } = (() => {
     switch (state) {
       case "online":
-        return { icon: <Cloud className="w-3.5 h-3.5" />, label: "Sincronizado", tone: "text-success", pulse: true };
+        return { icon: <Cloud className="w-3.5 h-3.5" />, label: t.sync.synced, tone: "text-success", pulse: true };
       case "stale":
-        return { icon: <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "1.6s" }} />, label: "Sincronizando…", tone: "text-warning", pulse: false };
+        return { icon: <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "1.6s" }} />, label: t.sync.syncing, tone: "text-warning", pulse: false };
       case "offline":
-        return { icon: <CloudOff className="w-3.5 h-3.5" />, label: "Sin conexión", tone: "text-muted-foreground", pulse: false };
+        return { icon: <CloudOff className="w-3.5 h-3.5" />, label: t.sync.offline, tone: "text-muted-foreground", pulse: false };
       case "demo":
       default:
-        return { icon: <HardDrive className="w-3.5 h-3.5" />, label: "Local", tone: "text-muted-foreground", pulse: false };
+        return { icon: <HardDrive className="w-3.5 h-3.5" />, label: t.sync.local, tone: "text-muted-foreground", pulse: false };
     }
   })();
 
@@ -44,14 +46,14 @@ export function SyncIndicator() {
       className={`inline-flex items-center gap-1.5 text-[10px] font-semibold ${tone}`}
       title={
         state === "demo"
-          ? "Tus datos viven solo en este dispositivo (modo demo)"
+          ? t.sync.tooltips.local
           : state === "online"
-          ? "Tus datos están sincronizados con la nube"
+          ? t.sync.tooltips.synced
           : state === "stale"
-          ? "Refrescando datos de la nube"
-          : "Sin red — los cambios se guardan local y suben cuando vuelva conexión"
+          ? t.sync.tooltips.syncing
+          : t.sync.tooltips.offline
       }
-      aria-label={`Estado de sincronización: ${label}`}
+      aria-label={`${t.sync.ariaLabel}: ${label}`}
       role="status"
     >
       {pulse ? (

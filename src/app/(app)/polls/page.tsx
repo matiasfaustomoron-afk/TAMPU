@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PollCard } from "@/components/polls/poll-card";
 import { CreatePoll } from "@/components/polls/create-poll";
 import { useActiveTrip } from "@/lib/hooks/use-trip-data";
+import { useTripRealtime } from "@/lib/hooks/use-trip-realtime";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { listPolls, listPollsOnline, isPollClosed, autoClosePollsIfDue, type Poll } from "@/lib/polls/poll";
 import { useI18n } from "@/i18n/provider";
@@ -59,26 +60,11 @@ export default function PollsPage() {
     }
   }, [trip, mode, client]);
 
-  // Realtime: si la tabla polls existe en Supabase, refetch en insert/update.
-  // En demo/unconfigured mode, no hace nada.
-  useEffect(() => {
-    if (mode !== "online" || !client || !trip) return;
-    const channel = client
-      .channel(`polls:trip:${trip.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "polls", filter: `trip_id=eq.${trip.id}` },
-        () => {
-          listPollsOnline(client, trip.id).then((online) => {
-            if (online != null) setPolls(online);
-          });
-        },
-      )
-      .subscribe();
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [mode, client, trip]);
+  // Realtime: usamos `useTripRealtime` que ya tiene channel canónico `trip:<id>`
+  // y handler `polls` opcional. Antes este useEffect creaba un channel separado
+  // `polls:trip:<id>` → doble suscripción cuando el user navegaba con presence
+  // global activa.
+  useTripRealtime(trip?.id, { polls: refresh });
 
   // Refresh cuando cambia el trip o cuando otra tab modifica localStorage.
   // No invocamos refresh inside the effect — lo conectamos como subscription.

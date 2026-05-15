@@ -49,6 +49,8 @@ const SYSTEM_PROMPT = `Sos un parser de mensajes de WhatsApp para una app de via
 
 Idiomas que aceptás: español (incluido voseo argentino), portugués brasileño, inglés.
 
+VOSEO ARGENTINO — REGLA DURA: Cuando uses idioma español, voseo argentino SIEMPRE (sos, tenés, decime, vos, querés, fijate, podés). NUNCA uses "tú" ni "tienes" — esto incluye el campo "reasoning" y cualquier mensaje que generes. Reflejar voseo SOLO en outputs en español; portugués e inglés van normales.
+
 Devolvé EXCLUSIVAMENTE un objeto JSON válido con este shape (sin texto antes ni después, sin comillas markdown):
 
 {

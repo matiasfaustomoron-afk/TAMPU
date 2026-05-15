@@ -374,7 +374,12 @@ export function useTripFullDataset(): TripFullDataset {
   const { data: packing, loading: l6 } = usePackingItems(id);
   const { data: days, loading: l7 } = useTripDays(id);
   const loading = lt || l1 || l2 || l3 || l4 || l5 || l6 || l7;
-  const ready = !!trip && !!tasks && !!reservations && !!cats && !!expenses && !!docs && !!packing && !!days;
+  // ready = todas las queries terminaron de cargar Y tenemos un trip activo.
+  // No usar `!!tasks && !!reservations && ...` porque el wrapper `useQuery`
+  // colapsa `q.data ?? fallback=[]`, así que esos checks son truthy desde el
+  // primer render aunque la fetch async no haya resuelto. El bug: dashboard
+  // renderizaba derivados con [] vacíos antes del primer fetch.
+  const ready = !loading && !!trip;
   return { trip, tasks, reservations, cats, expenses, docs, packing, days, loading, ready };
 }
 
@@ -444,6 +449,7 @@ function invalidateTrip(qc: QueryClient, mode: string, tripId: string | undefine
   qc.invalidateQueries({ queryKey: ["tripDays", mode, tripId] });
   qc.invalidateQueries({ queryKey: ["cities", mode, tripId] });
   qc.invalidateQueries({ queryKey: ["attachments", mode, tripId] });
+  qc.invalidateQueries({ queryKey: ["tripMembers", mode, tripId] });
 }
 
 function invalidateAllTrips(qc: QueryClient, mode: string) {

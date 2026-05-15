@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SectionHeader, EmptyState, Semaphore } from "@/components/shared";
 import { useActiveTrip, useCities, useReservations, useTripDays } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
+import { plural } from "@/lib/i18n/plural";
 import { findCoordinates } from "@/lib/config/city-coordinates";
 import { getPOIsForCities, POI_CATEGORY_LABELS } from "@/lib/config/pois";
 import { readTrackPoints, type GeoPoint } from "@/lib/native/platform";
@@ -15,13 +16,18 @@ import { MapPin, Plane, Route } from "lucide-react";
 // Leaflet needs the window object — load only on client.
 // TripMapClustered = mapa con clustering por día + route optimizer (mayo 2026).
 // El componente original `trip-map.tsx` se mantiene para fallback.
+function MapLoading() {
+  // `dynamic`'s loading prop puede ser un componente — usamos el dict por i18n.
+  const { t } = useI18n();
+  return <div className="h-[480px] rounded-lg border bg-muted/20 flex items-center justify-center text-xs text-muted-foreground">{t.common.loading}</div>;
+}
 const TripMap = dynamic(() => import("@/components/map/trip-map-clustered"), {
   ssr: false,
-  loading: () => <div className="h-[480px] rounded-lg border bg-muted/20 flex items-center justify-center text-xs text-muted-foreground">Cargando...</div>,
+  loading: () => <MapLoading />,
 });
 
 export default function MapPage() {
-  const { formatDate } = useI18n();
+  const { t, locale, formatDate } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: cities, loading: lc } = useCities(trip?.id);
   const { data: reservations } = useReservations(trip?.id);
@@ -44,13 +50,12 @@ export default function MapPage() {
 
   if (lc) return <div className="animate-pulse h-[480px] bg-muted rounded-lg" />;
   if (!trip || !cities || cities.length === 0) {
-    return <EmptyState title="No hay ciudades cargadas" icon={<MapPin className="w-8 h-8" />} action={<Link href="/itinerary"><Button>Cargar ciudades</Button></Link>} />;
+    return <EmptyState title={t.map.noCitiesLoaded} icon={<MapPin className="w-8 h-8" />} action={<Link href="/itinerary"><Button>{t.map.loadCities}</Button></Link>} />;
   }
 
   return (
-    <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
-      <SectionHeader
-        title="Mapa del viaje"
+    <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">      <SectionHeader
+        title={t.map.title}
         subtitle={stats ? `${stats.withCoords}/${stats.totalCities} ciudades · ${stats.totalNights} noches · ${stats.flightCount} vuelos` : ""}
       />
 
@@ -64,7 +69,7 @@ export default function MapPage() {
         <Card>
           <CardContent className="p-4">
             <h3 className="text-sm font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-              <MapPin className="w-4 h-4" /> POIs curados ({pois.length})
+              <MapPin className="w-4 h-4" /> {t.map.poisCurated} ({pois.length})
             </h3>
             <div className="flex flex-wrap gap-1.5 text-[10px]">
               {Object.entries(POI_CATEGORY_LABELS).map(([k, v]) => {
@@ -85,14 +90,14 @@ export default function MapPage() {
         <Card className="border-l-4 border-l-info">
           <CardContent className="p-3 text-xs flex items-center gap-2">
             <Route className="w-4 h-4 text-info" />
-            <span><strong>{track.length}</strong> puntos de tracking GPS guardados localmente</span>
+            <span><strong>{track.length}</strong> {t.map.trackingPointsSaved}</span>
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardContent className="p-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider mb-3">Ruta</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider mb-3">{t.map.eyebrowRoute}</h3>
           <ol className="space-y-2">
             {cities.map((c, i) => {
               const coords = findCoordinates(c.name);
@@ -109,9 +114,9 @@ export default function MapPage() {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate">{c.name}</p>
                       <Semaphore status={status} size={8} />
-                      {coords ? null : <span className="text-[9px] text-muted-foreground">(sin coords)</span>}
+                      {coords ? null : <span className="text-[9px] text-muted-foreground">{t.map.noCoords}</span>}
                     </div>
-                    <p className="text-[10px] text-muted-foreground">{c.country} · {c.nights} {c.nights === 1 ? "noche" : "noches"}</p>
+                    <p className="text-[10px] text-muted-foreground">{c.country} · {c.nights} {plural(locale, c.nights, t.map.nights)}</p>
                     {c.arrival_date && (
                       <p className="text-[10px] text-muted-foreground">{formatDate(c.arrival_date)}{c.departure_date && ` → ${formatDate(c.departure_date)}`}</p>
                     )}
@@ -127,10 +132,10 @@ export default function MapPage() {
       <Card>
         <CardContent className="p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Plane className="w-4 h-4" /> Vuelos del viaje
+            <Plane className="w-4 h-4" /> {t.map.eyebrowFlights}
           </h3>
           {(reservations || []).filter(r => r.type === "flight").length === 0 ? (
-            <p className="text-xs text-muted-foreground">Sin vuelos cargados</p>
+            <p className="text-xs text-muted-foreground">{t.map.noFlights}</p>
           ) : (
             <ul className="space-y-1.5">
               {(reservations || []).filter(r => r.type === "flight").map(r => (

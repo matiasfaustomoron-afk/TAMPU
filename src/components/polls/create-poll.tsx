@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createLocalPoll, createPollOnline, type Poll } from "@/lib/polls/poll";
 import { useSupabase } from "@/lib/context/supabase-provider";
+import { useI18n } from "@/i18n/provider";
 import { logActivity } from "@/lib/collab/activity-feed";
 import { haptic } from "@/lib/native/platform";
 import { toast } from "@/components/ios/toast";
@@ -33,6 +34,8 @@ export function CreatePoll({
   variant?: "row" | "compact";
 }) {
   const { user, client, mode } = useSupabase();
+  const { t } = useI18n();
+  const pc = t.pollsCreate;
   const userId = user?.id || "demo-user";
   const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Tú";
 
@@ -66,7 +69,7 @@ export function CreatePoll({
       description: o.description.trim() || undefined,
     }));
     if (!question.trim() || valid.length < 2) {
-      toast("Pregunta y al menos 2 opciones", "warn");
+      toast(pc.validationMinTwo, "warn");
       return;
     }
     const input = {
@@ -87,7 +90,7 @@ export function CreatePoll({
       poll = createLocalPoll(input);
     }
     haptic("medium");
-    toast("Poll creado", "success");
+    toast(pc.successToast, "success");
     logActivity({
       tripId,
       userId,
@@ -102,7 +105,7 @@ export function CreatePoll({
     setQuestion(defaultQuestion || "");
     setOptions([{ label: "", description: "" }, { label: "", description: "" }]);
     setDeadline("");
-  }, [tripId, question, options, deadline, userId, displayName, defaultQuestion, onCreated, mode, client]);
+  }, [tripId, question, options, deadline, userId, displayName, defaultQuestion, onCreated, mode, client, pc]);
 
   return (
     <>
@@ -111,25 +114,25 @@ export function CreatePoll({
           onClick={() => setOpen(true)}
           className="pressable w-full flex items-center justify-center gap-2 h-11 rounded-2xl border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors text-[13px] font-semibold"
         >
-          <Vote className="w-4 h-4" /> Crear poll
+          <Vote className="w-4 h-4" /> {pc.createTrigger}
         </button>
       ) : (
         <button
           onClick={() => setOpen(true)}
           className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-[11.5px] font-semibold"
         >
-          <Vote className="w-3 h-3" /> Poll
+          <Vote className="w-3 h-3" /> {pc.createCompact}
         </button>
       )}
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Nueva encuesta">
+      <Sheet open={open} onClose={() => setOpen(false)} title={pc.title}>
         <div className="space-y-3 pb-4">
           <div>
-            <label className="text-[10px] uppercase text-muted-foreground tracking-wider">Pregunta</label>
+            <label className="text-[10px] uppercase text-muted-foreground tracking-wider">{pc.question}</label>
             <Textarea
               value={question}
               onChange={e => setQuestion(e.target.value)}
-              placeholder="¿Hotel A o B? ¿Vamos al museo o al parque?"
+              placeholder={pc.questionPlaceholder}
               autoFocus
               rows={2}
             />
@@ -137,13 +140,13 @@ export function CreatePoll({
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] uppercase text-muted-foreground tracking-wider">Opciones</label>
+              <label className="text-[10px] uppercase text-muted-foreground tracking-wider">{pc.options}</label>
               <button
                 onClick={addOption}
                 disabled={options.length >= 6}
                 className="text-[11px] text-primary font-semibold disabled:opacity-40 pressable"
               >
-                + agregar
+                {pc.addOption}
               </button>
             </div>
             <ul className="space-y-2">
@@ -156,12 +159,12 @@ export function CreatePoll({
                     <Input
                       value={o.label}
                       onChange={e => updateOption(i, "label", e.target.value)}
-                      placeholder={`Opción ${String.fromCharCode(65 + i)}`}
+                      placeholder={`${pc.optionPlaceholder} ${String.fromCharCode(65 + i)}`}
                     />
                     <Input
                       value={o.description}
                       onChange={e => updateOption(i, "description", e.target.value)}
-                      placeholder="Detalle (opcional)"
+                      placeholder={pc.detailOptional}
                       className="text-[12.5px]"
                     />
                   </div>
@@ -169,7 +172,7 @@ export function CreatePoll({
                     <button
                       onClick={() => removeOption(i)}
                       className="w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-destructive pressable"
-                      aria-label="Quitar opción"
+                      aria-label={pc.removeAria}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -181,7 +184,7 @@ export function CreatePoll({
 
           <div>
             <label className="text-[10px] uppercase text-muted-foreground tracking-wider">
-              Deadline (opcional)
+              {pc.deadlineOptional}
             </label>
             <Input
               type="datetime-local"
@@ -189,12 +192,12 @@ export function CreatePoll({
               onChange={e => setDeadline(e.target.value)}
             />
             <p className="text-[10.5px] text-muted-foreground mt-1">
-              Después del deadline el poll se cierra automáticamente.
+              {pc.deadlineHint}
             </p>
           </div>
 
           <Button onClick={handleCreate} size="lg" className="w-full gap-1">
-            <Plus className="w-4 h-4" /> Crear encuesta
+            <Plus className="w-4 h-4" /> {pc.submit}
           </Button>
         </div>
       </Sheet>

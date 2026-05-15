@@ -14,7 +14,11 @@ import { useActiveTrip, useTripMembers } from "@/lib/hooks/use-trip-data";
 import { useTripRealtime } from "@/lib/hooks/use-trip-realtime";
 import { useSupabase } from "@/lib/context/supabase-provider";
 import { setActiveTrip } from "@/lib/data/trips";
-import { fetchPendingInvites } from "@/lib/data/members";
+import {
+  fetchPendingInvites,
+  revokeMember,
+  removeMember as removeMemberData,
+} from "@/lib/data/members";
 import { track, EVENTS } from "@/lib/analytics";
 
 /**
@@ -209,7 +213,7 @@ function SharePageContent() {
     async (id: string) => {
       if (!client) return;
       try {
-        await client.from("trip_members").update({ status: "revoked" }).eq("id", id);
+        await revokeMember(client, id);
         toast("Invitación descartada", "info");
         refetch();
       } catch {
@@ -224,7 +228,7 @@ function SharePageContent() {
       if (!client) return;
       if (!confirm("¿Quitar a este miembro del viaje?")) return;
       try {
-        await client.from("trip_members").delete().eq("id", id);
+        await removeMemberData(client, id);
         toast("Miembro removido", "info");
         refetch();
       } catch {

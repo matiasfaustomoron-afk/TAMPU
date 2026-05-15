@@ -174,14 +174,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
+  // Wire MercadoPago checkout (Iter 5).
+  //
+  // El endpoint existente `/api/checkout/create-session` es Stripe-only y
+  // está hardcodeado a Tampu+ Lifetime — no podemos reutilizarlo as-is para
+  // line items dinámicos del print-book. Devolvemos el orderId + un
+  // `checkoutUrl: null` con nota para que el cliente sepa que la integración
+  // MercadoPago todavía está pending. Cuando esté listo, el cliente
+  // podrá redirigir directo al URL devuelto sin cambiar el shape de respuesta.
+  //
+  // TODO Iter 6: implementar `/api/checkout/mercadopago` con preference API
+  // (PIX + tarjeta + Rapipago) y devolver init_point acá.
+  const orderId = (created as { id?: string } | null)?.id ?? null;
+
   return NextResponse.json({
     ok: true,
+    orderId,
     order: created,
     estimate: {
       pages,
       price_eur: price,
       binding,
     },
+    checkoutUrl: null,
+    note: "MercadoPago integration pending — order saved as draft, payment flow TBD.",
     next_step: "El libro está en estado 'draft'. Cuando confirmes el pago, generamos el PDF y lo mandamos a imprimir.",
     fulfillment_partner: "Peecho · Amsterdam · 7-14 días delivery",
   });

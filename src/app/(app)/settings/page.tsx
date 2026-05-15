@@ -1150,7 +1150,7 @@ export default function SettingsPage() {
       {/* Geolocation opt-in */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Navigation className="w-4 h-4" />Tracking GPS (opcional)</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Navigation className="w-4 h-4" />{t.settingsExtras.locationGpsTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
@@ -1160,7 +1160,7 @@ export default function SettingsPage() {
           <label className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 cursor-pointer">
             <input type="checkbox" checked={tracking} onChange={e => handleTrackingChange(e.target.checked)} className="w-4 h-4" />
             <span className="text-sm font-medium">
-              {tracking ? "Tracking activado" : "Tracking desactivado"}
+              {tracking ? t.settingsExtras.locationOn : t.settingsExtras.locationOff}
             </span>
           </label>
         </CardContent>

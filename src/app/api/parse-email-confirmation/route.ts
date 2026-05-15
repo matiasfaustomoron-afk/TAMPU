@@ -163,6 +163,29 @@ async function llmParse(req: NextRequest, text: string): Promise<LLMParseEnvelop
       outputTokens: rich.usage.outputTokens,
     };
   }
+
+  // ─── Shape validator (iter 5 hardening) ─────────────────────────────
+  // El modelo a veces devuelve items con `type` inventado (ej. "boarding",
+  // "voucher"), o `original_amount` como string ("450.00"). Filtramos los
+  // type inválidos para no romper el consumer downstream, y coercemos
+  // numéricos para mantener el contract de ParsedBooking.
+  const KNOWN_TYPES: ReadonlyArray<string> = [
+    "flight", "accommodation", "train", "bus", "tour",
+    "insurance", "connectivity", "transfer", "other",
+  ];
+  parsed.bookings = parsed.bookings.filter(
+    (b): b is ParsedBooking =>
+      !!b && typeof b === "object" && typeof (b as ParsedBooking).type === "string" &&
+      KNOWN_TYPES.includes((b as ParsedBooking).type),
+  );
+  parsed.bookings.forEach((b) => {
+    const bb = b as unknown as { original_amount: unknown };
+    if (typeof bb.original_amount === "string") {
+      const n = Number(bb.original_amount);
+      bb.original_amount = Number.isFinite(n) ? n : 0;
+    }
+  });
+
   return {
     data: {
       bookings: parsed.bookings,

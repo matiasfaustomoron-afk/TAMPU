@@ -18,6 +18,7 @@ import { HeroParallax } from "@/components/ios/hero-parallax";
 import { DestinationPhoto } from "@/components/brand/destination-photo";
 import { GlyphCartera, GlyphDinero, GlyphEmergencia } from "@/components/brand/glyphs";
 import { QuickStatsCard } from "@/components/dashboard/QuickStatsCard";
+import { RecapShareButton } from "@/components/share/RecapShareButton";
 import { scheduleDailyBrief } from "@/lib/daily-brief";
 import { pushWidgetFromCommandCenter } from "@/lib/native/widget-bridge";
 import { useCountUp } from "@/lib/hooks/use-count-up";
@@ -290,6 +291,13 @@ export default function TodayPage() {
       {stats && (
         <section className="px-4 mt-3" aria-label="Estadísticas rápidas del viaje">
           <QuickStatsCard stats={stats} />
+        </section>
+      )}
+
+      {/* ─── 1.6. SHARE RECAP — botón compartir og:image del viaje ─── */}
+      {trip?.id && (
+        <section className="px-4 mt-3" aria-label="Compartir recap del viaje">
+          <RecapShareButton tripId={trip.id} tripName={trip.name || trip.destination || "Mi viaje"} />
         </section>
       )}
 

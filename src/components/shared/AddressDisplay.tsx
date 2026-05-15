@@ -6,6 +6,7 @@ import QRCode from "react-qr-code";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ios/toast";
 import { haptic } from "@/lib/native/platform";
+import { useI18n } from "@/i18n/provider";
 
 /**
  * <AddressDisplay /> — bloque canónico para mostrar la inbox address per-trip.
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function AddressDisplay({ address, shortId, label = "Dirección del viaje" }: Props) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -52,7 +54,7 @@ export function AddressDisplay({ address, shortId, label = "Dirección del viaje
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
         haptic("light");
-        await navigator.share({ title: "Mi dirección Tampu", text: address });
+        await navigator.share({ title: t.address.shareTitle, text: address });
       } catch {
         // user dismissed share sheet — no toast.
       }
@@ -92,19 +94,19 @@ export function AddressDisplay({ address, shortId, label = "Dirección del viaje
           variant="outline"
           className="flex-1"
           onClick={handleCopy}
-          aria-label="Copiar dirección"
+          aria-label={t.address.copyAriaLabel}
         >
           <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
-          {copied ? "Copiado" : "Copiar"}
+          {copied ? t.address.copied : t.address.copy}
         </Button>
         <Button
           variant="outline"
           className="flex-1"
           onClick={handleShare}
-          aria-label="Compartir dirección"
+          aria-label={t.address.shareAriaLabel}
         >
           <Share2 className="w-4 h-4 mr-2" aria-hidden="true" />
-          Compartir
+          {t.common.share}
         </Button>
       </div>
 

@@ -26,6 +26,7 @@ import { resolveDestinationPhoto } from "@/lib/photos/destination-resolver";
 import { buildAffiliateUrl, isPartnerActive, type Partner } from "@/lib/affiliates/config";
 import { withRetry } from "@/lib/ai/providers";
 import { extractJson } from "@/lib/ai/json-extractor";
+import { captureException } from "@/lib/observability/sentry";
 
 // ─── DEEP LINK WHITELIST (iter 4 hardening) ───────────────────────────────
 // Las suggestions del LLM pueden incluir `deep_link`. Sin sanitización, el
@@ -373,7 +374,10 @@ async function executeAnthropicCall(
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
-          max_tokens: 1500,
+          // Adaptive: pasos intermedios (messages.length pequeño) suelen ser
+          // tool dispatch + reasoning corto; el final concentra prosa. Reducir
+          // techo intermedio baja costo sin truncar respuestas finales.
+          max_tokens: messages.length > 4 ? 1500 : 800,
           // Prompt caching: SYSTEM_PROMPT + TOOLS son grandes y se repiten
           // entre todas las llamadas → cacheamos para descontar ~90% del input
           // cost en hits subsiguientes (TTL ephemeral ~5min).
@@ -411,6 +415,7 @@ async function executeAnthropicCall(
       if (status === 401) throw err;
       if (status && (status === 429 || status >= 500)) throw err;
       console.warn("[agentic] anthropic exception:", err);
+      captureException(err, { tag: "agentic_loop_exception", level: "warning" });
       return null;
     }
   });

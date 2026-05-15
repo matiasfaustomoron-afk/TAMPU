@@ -38,10 +38,21 @@ function decodeFromUrl(): { data: SharedTrip | null; err: string | null } {
   }
 }
 
+/**
+ * Mapea un string a un hue OKLCH dentro de la familia "tierra" (15..95).
+ *
+ * Antes esto retornaba un hue libre (0..359) lo que daba violetas, azules y
+ * verdes que no son consistentes con el branding cálido de Tampu (terracota,
+ * arena, cardón). Constrain al rango [15, 95] queda dentro de naranjas /
+ * amarillos / oliva oscuro — todos coherentes con el palette del resto de
+ * la app.
+ *
+ * Algoritmo: el mismo hash multiplicativo de antes, pero módulo 80 + offset 15.
+ */
 function destHue(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
+  return 15 + (Math.abs(h) % 80);
 }
 
 function formatDate(d: string | null): string {

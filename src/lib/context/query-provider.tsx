@@ -24,7 +24,16 @@ export function TampuQueryProvider({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            // staleTime 60s: en mobile la latencia de WiFi pública + Supabase
+            // hace que refetch frecuente sea más caro que mostrar data
+            // ligeramente vieja. 60s es el sweet spot entre UX inmediato y
+            // costos de Supabase (especialmente en /dashboard que consume 8+
+            // queries al mount).
+            staleTime: 60_000,
+            // gcTime 10min: queries inactivas (componente desmontado) sobreviven
+            // 10 min antes de garbage-collect. Esto permite navegación rápida
+            // back/forward sin refetch (ej toggle entre /dashboard y /expenses).
+            gcTime: 10 * 60_000,
             retry: 1,
             refetchOnWindowFocus: true,
           },

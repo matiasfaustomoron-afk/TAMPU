@@ -17,7 +17,21 @@ import { getAirportInfo } from "@/lib/airport-info-client";
 import { hasUserApiKey, withApiKeyHeaders } from "@/lib/ai/user-key";
 import { generateOnDevice } from "@/lib/native/apple-intelligence";
 import { Typewriter } from "@/components/ios/typewriter";
+import { readVersioned } from "@/lib/storage/version";
 import type { Attachment } from "@/lib/types/database";
+
+// Schema version del array de Attachment[] persistido por /vault demo.
+// Debe coincidir con `VAULT_SCHEMA` en `src/app/(app)/vault/page.tsx`.
+// Si el shape cambia, /vault es el owner del migrate — acá solo leemos.
+const VAULT_SCHEMA = 1;
+
+// Migrate del shape v0 (array directo legacy) — replica el mismo "shape pass"
+// que /vault hace. Idéntico para que la lectura sea consistent independiente
+// de cuál pantalla "upgradeó" primero los datos del user.
+function migrateVaultRead(data: unknown, fromVersion: number): Attachment[] | null {
+  if (fromVersion === 0 && Array.isArray(data)) return data as Attachment[];
+  return null;
+}
 
 interface Suggestion {
   title: string;
@@ -55,14 +69,19 @@ export default function AssistantPage() {
     return () => window.removeEventListener("travel-os-anthropic-key-change", check);
   }, []);
 
-  // Load vault metadata into the assistant context
+  // Load vault metadata into the assistant context.
+  // Usamos `readVersioned` (mismo helper que /vault) para mantener consistency
+  // de schema y soportar el upgrade silencioso del legacy v0 — antes era un
+  // `JSON.parse` crudo que rompía si el shape cambiaba.
   useEffect(() => {
     if (!trip) return;
     if (mode === "demo") {
-      try {
-        const raw = localStorage.getItem(`travel-os-vault-${trip.id}`);
-        if (raw) setVault(JSON.parse(raw));
-      } catch { /* empty */ }
+      const initial = readVersioned<Attachment[]>(
+        `travel-os-vault-${trip.id}`,
+        VAULT_SCHEMA,
+        migrateVaultRead,
+      );
+      if (initial) setVault(initial);
     }
     // Online mode: vault is fetched directly when needed; for assistant we keep it light
   }, [trip, mode]);

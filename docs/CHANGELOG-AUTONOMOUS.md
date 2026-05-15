@@ -321,3 +321,47 @@ Commit Iter 3: `04998ee` (consolidado).
 
 ## Iteration 4 — 2026-05-15T13:51:32Z
 
+**Pipeline**: 5 audit agents (60+ findings) → 5 fix agents paralelos → 59 fixes aplicados → verify tsc 0 + vitest 234/234 + build 69 routes OK → commit `cf7d96e` + Vercel deploy production → smoke /welcome 200, /login 200, /api/curated-destinations JSON ✓.
+
+### Cambios (59) por dominio
+
+**IA (9)** — `src/lib/ai/json-extractor.ts` NEW (extractJson<T> centralizado), 6 endpoints migrados (assistant, parse-booking, parse-email-confirmation, airport-info, classify-document, agentic), `agentic.ts` deep_link whitelist + `sanitizeDeepLink()` contra hallucination, `expense-categorizer.ts` proxy fallback.
+
+**Code (6)** — `src/lib/data/members.ts` NEW (TripMember type + CRUD), `useTripMembers` hook + `mUpdateAttachment` mutation, `members/page.tsx` TanStack + realtime, `vault/page.tsx` toggleFavorite via mutation, `storage/keys.ts` registry expandido.
+
+**Diseño+i18n (30)** — `src/lib/i18n/plural.ts` NEW (Intl.PluralRules), `es.ts`+`en.ts` keys today.*+cashflow.*, `/today/page.tsx` 12 strings + plural helper, `/cashflow/page.tsx` 13 strings, QuickStatsCard i18n, skeleton sweep budget+reservations.
+
+**Funcionalidad (9)** — `mAddTask` mutation + UI inline en `/tasks` (P0 ghost feature resuelto), migration 00036_alert_dismissals.sql (RLS user-scoped), `/alerts` dismiss in-memory, `/inbox` commitEntry partial commit (EmailInStatus extendido con "partial"), `/settings` BYOK Turnstile fallback + checkout redirect.
+
+**Innovación (5) — Tampu Recap MVP** — `@vercel/og` instalado, `src/app/api/recap/[tripId]/route.tsx` NEW Edge (ImageResponse 1200x630 + 4 stats + gradiente tierra, cache 1h+24h SWR), `src/app/recap/[tripId]/page.tsx` NEW HTML wrapper og:image, `src/components/share/RecapShareButton.tsx` NEW Web Share API, middleware PUBLIC_PATHS +/recap+/api/recap/.
+
+### Verificación
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` 234/234 ✓
+- `npm run build` 69 routes ✓
+- Deploy production READY ✓
+- Smoke /welcome 200, /login 200, /api/curated-destinations JSON ✓
+
+### USER ACTIONS post-Iter 4
+**P0 CRÍTICO**: Aplicar migration 00036_alert_dismissals.sql en Supabase SQL Editor.
+**P1**: Revocar 4 tokens (Vercel, GitHub PAT, Resend, Supabase DB password).
+
+### Token cost estimado Iter 4
+~280k tokens (5 audit + 5 fix + verify + commit + deploy).
+
+### Observaciones para Iter 5+
+1. `/alerts` dismiss → wire DB persistence (migration 00036 lista)
+2. `/journal` entries Supabase sync (P0 unfixed)
+3. `/itinerary` day ops (drag&drop, edit, complete) P0 unfixed
+4. `/settings` i18n masivo (~1234 LOC, deferred 6-8h)
+5. Storage keys legacy `travel-os-*` → `tampu-*` sweep
+6. SSE streaming `/api/assistant`
+7. WhatsApp outbound pre-flight cron
+8. Recap button wire en `/today`
+
+Commit Iter 4: `cf7d96e`.
+
+---
+
+## Iteration 5 — 2026-05-15T13:53:30Z
+

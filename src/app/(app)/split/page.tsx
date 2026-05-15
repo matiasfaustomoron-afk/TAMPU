@@ -10,7 +10,7 @@ import { buildSplitSummary, parseSplitFromNotes, type SplitExpense } from "@/lib
 import { Users, ArrowRight } from "lucide-react";
 
 export default function SplitPage() {
-  const { formatCurrency } = useI18n();
+  const { t, formatCurrency } = useI18n();
   const { data: trip } = useActiveTrip();
   const { data: expenses } = useExpenses(trip?.id);
 
@@ -21,29 +21,29 @@ export default function SplitPage() {
 
   const summary = useMemo(() => buildSplitSummary(splitExpenses), [splitExpenses]);
 
-  if (!trip) return <EmptyState title="Sin viaje" icon={<Users className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">Crear o elegir viaje</Button></Link>} />;
+  if (!trip) return <EmptyState title={t.split.noTrip} icon={<Users className="w-8 h-8" />} action={<Link href="/trips"><Button variant="default">{t.split.createOrPickTrip}</Button></Link>} />;
 
   const hasSplits = summary.count > 0;
 
   return (
     <div className="space-y-4 pb-20 lg:pb-0 animate-fade-in">
       <SectionHeader
-        title="Split entre viajeros"
-        subtitle={hasSplits ? `${summary.count} gastos compartidos · ${formatCurrency(summary.total)} total` : "Sin gastos compartidos cargados"}
+        title={t.split.title}
+        subtitle={hasSplits ? `${summary.count} ${t.split.subtitleCount} · ${formatCurrency(summary.total)} ${t.expenses.total.toLowerCase()}` : t.split.subtitleEmpty}
       />
 
       {hasSplits ? (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <KPICard label="Compartidos" value={`${summary.count}`} status="gray" icon={<Users className="w-4 h-4" />} />
-            <KPICard label="Total" value={formatCurrency(summary.total)} status="gray" />
-            <KPICard label="Personas" value={`${summary.by_user.length}`} status="gray" />
-            <KPICard label="Settlements" value={`${summary.settlements.length}`} status={summary.settlements.length === 0 ? "green" : "yellow"} />
+            <KPICard label={t.split.eyebrowShared} value={`${summary.count}`} status="gray" icon={<Users className="w-4 h-4" />} />
+            <KPICard label={t.expenses.total} value={formatCurrency(summary.total)} status="gray" />
+            <KPICard label={t.split.people} value={`${summary.by_user.length}`} status="gray" />
+            <KPICard label={t.split.settlements} value={`${summary.settlements.length}`} status={summary.settlements.length === 0 ? "green" : "yellow"} />
           </div>
 
           <Card>
             <CardContent className="p-4 space-y-2">
-              <h3 className="text-sm font-bold uppercase tracking-wider">Balance por persona</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider">{t.split.balanceByPerson}</h3>
               <ul className="space-y-1.5">
                 {summary.by_user.map(b => (
                   <li key={b.user} className="flex items-center justify-between p-2 rounded-md bg-muted/20">
@@ -51,7 +51,7 @@ export default function SplitPage() {
                     <span className={`text-sm font-semibold tabular-nums ${b.net > 0 ? "text-success" : "text-destructive"}`}>
                       {b.net > 0 ? "+" : ""}{formatCurrency(Math.abs(b.net))}
                       <span className="text-[10px] text-muted-foreground ml-1">
-                        {b.net > 0 ? "le deben" : "debe"}
+                        {b.net > 0 ? t.split.owesTo : t.split.owes}
                       </span>
                     </span>
                   </li>
@@ -62,9 +62,9 @@ export default function SplitPage() {
 
           <Card>
             <CardContent className="p-4 space-y-2">
-              <h3 className="text-sm font-bold uppercase tracking-wider">Settlements mínimos</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider">{t.split.eyebrowSettlements}</h3>
               {summary.settlements.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">Todo cuadrado.</p>
+                <p className="text-xs text-muted-foreground py-4 text-center">{t.split.allSettled}</p>
               ) : (
                 <ul className="space-y-1.5">
                   {summary.settlements.map((s, i) => (
@@ -84,9 +84,9 @@ export default function SplitPage() {
         <Card>
           <CardContent className="p-6 text-center space-y-2">
             <Users className="w-10 h-10 text-muted-foreground/40 mx-auto" />
-            <p className="text-sm font-medium">No hay gastos compartidos todavía</p>
+            <p className="text-sm font-medium">{t.split.noSharedYet}</p>
             <p className="text-xs text-muted-foreground">
-              Marcá un gasto como compartido en /expenses añadiendo en notas:<br />
+              {t.split.howTo}<br />
               <code className="text-[10px]">__SPLIT__:{`{"paid_by":"Yo","shared_with":["Yo","Ana"]}`}__</code>
             </p>
           </CardContent>
@@ -95,8 +95,7 @@ export default function SplitPage() {
 
       <Card className="bg-muted/20">
         <CardContent className="p-3 text-[10px] text-muted-foreground">
-          Algoritmo: cada gasto compartido se reparte por igual. Calculamos balance neto por persona y emitimos
-          el conjunto MÍNIMO de transferencias para que todos queden a cero (greedy creditor/debtor matching).
+          {t.split.algorithm}
         </CardContent>
       </Card>
     </div>

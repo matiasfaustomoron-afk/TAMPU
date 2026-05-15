@@ -428,10 +428,15 @@ function ReservationsPollsContext({
         </p>
       </div>
       <a
-        href={`/polls`}
+        // Pasamos `suggest=<type>` para que /polls pueda pre-poblar las
+        // opciones del wizard con las pending reservations de este tipo.
+        // TODO (Code agent territory): /polls/page.tsx tiene que consumir
+        // `searchParams.suggest` y leer las reservations pending del trip
+        // activo para pre-rellenar el form. Por ahora el link igual lleva
+        // a /polls genérico — la query es no-op hasta que polls la lea.
+        href={`/polls?suggest=${encodeURIComponent(a.type)}`}
         className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary text-primary-foreground text-[11.5px] font-semibold shrink-0"
         aria-label="Crear poll desde estas opciones"
-        // Hint: en el futuro podemos pasar defaultOptions via querystring.
         title={defaultOptions.map(o => o.label).join(" vs ")}
       >
         Crear poll

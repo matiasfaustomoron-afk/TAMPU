@@ -13,6 +13,7 @@ import { BUDGET_CATEGORIES } from "@/lib/config/constants";
 import { recordProxyCall, estimateCostUsd } from "@/lib/ai/rate-limit";
 import { getProxyIdentifier } from "@/lib/ai/proxy-identifier";
 import { captureException } from "@/lib/observability/sentry";
+import { extractJson } from "@/lib/ai/json-extractor";
 
 // ─── SECURITY (sprint 05/2026) ──────────────────────────────────────────
 // Hard cap. La task de classify es chiquita, 200 tokens alcanzan y sobran.
@@ -102,26 +103,13 @@ export async function POST(req: NextRequest) {
     model: rich.model,
   }).catch((e) => captureException(e, { tag: "categorize-expense.record" }));
 
-  // Extract JSON (modelo puede envolver en markdown ```json ... ```)
-  const match = rich.text.match(/\{[\s\S]*\}/);
-  if (!match) {
-    return NextResponse.json({
-      error: "no_json_in_response",
-      raw: rich.text,
-      degraded: true,
-      reason: "json_parse_failed",
-      provider: rich.provider,
-      model: rich.model,
-    }, { status: 502 });
-  }
-
-  let parsed: CategorizationResult;
-  try {
-    parsed = JSON.parse(match[0]) as CategorizationResult;
-  } catch {
+  // Extract JSON via helper compartido — maneja code fences, prefijos/sufijos
+  // de texto, y errores de parse uniformemente con los otros endpoints AI.
+  const parsed = extractJson<CategorizationResult>(rich.text);
+  if (!parsed) {
     return NextResponse.json({
       error: "json_parse_failed",
-      raw: match[0],
+      raw: rich.text,
       degraded: true,
       reason: "json_parse_failed",
       provider: rich.provider,

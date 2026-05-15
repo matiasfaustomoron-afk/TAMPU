@@ -101,6 +101,18 @@ async function llmAirportInfo(
       source,
     };
   }
+
+  // ─── Shape coerce (iter 5 hardening) ───────────────────────────────
+  // El modelo a veces devuelve secciones como objeto null/undefined u omite
+  // alguna sección entera. Garantizamos arrays para no romper el client
+  // que asume `.map` sobre cada lista.
+  if (!Array.isArray(parsed.terminals)) parsed.terminals = [];
+  if (!Array.isArray(parsed.food)) parsed.food = [];
+  if (!Array.isArray(parsed.currency_exchange)) parsed.currency_exchange = [];
+  if (!Array.isArray(parsed.lounges)) parsed.lounges = [];
+  if (!Array.isArray(parsed.transport_to_city)) parsed.transport_to_city = [];
+  if (!Array.isArray(parsed.tips)) parsed.tips = [];
+
   return {
     result: { iata, generated: true, source: "claude", ...parsed },
     provider: rich.provider,

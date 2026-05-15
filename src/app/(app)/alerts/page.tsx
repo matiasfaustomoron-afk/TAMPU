@@ -5,12 +5,13 @@ import { LargeTitle, IOSSection, IOSRow, Pill } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
 import { useDynamicAlerts } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
+import { plural } from "@/lib/i18n/plural";
 import { toast } from "@/components/ios/toast";
 import { Bell, AlertTriangle, Info, CheckCircle2, Check } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 
 export default function AlertsPage() {
-  const { t, formatDate } = useI18n();
+  const { t, locale, formatDate } = useI18n();
   const { data: alerts, loading } = useDynamicAlerts();
   const [filter, setFilter] = useState<"all" | "critical" | "warning" | "info">("all");
   // ─── Dismissed in-memory set (iter 4 scope reducido) ──────────────────
@@ -49,11 +50,11 @@ export default function AlertsPage() {
   if (alerts.length === 0) {
     return (
       <div className="animate-fade-in">
-        <LargeTitle title="Alertas" eyebrow="Notificaciones del viaje" serif />
+        <LargeTitle title={t.alerts.title} eyebrow={t.alerts.eyebrow} serif />
         <div className="mt-8">
           <EmptyState
-            title="Todo en orden"
-            description="No hay alertas activas. Tu viaje está bajo control."
+            title={t.alerts.allClear}
+            description={t.alerts.tripUnderControl}
             icon={<CheckCircle2 className="w-8 h-8 text-success" />}
           />
         </div>
@@ -71,8 +72,8 @@ export default function AlertsPage() {
   return (
     <div className="animate-fade-in">
       <LargeTitle
-        eyebrow={`${alerts.length} ${alerts.length === 1 ? "alerta activa" : "alertas activas"}`}
-        title="Alertas"
+        eyebrow={`${alerts.length} ${plural(locale, alerts.length, t.alerts.activeAlerts)}`}
+        title={t.alerts.title}
         serif
       />
 
@@ -81,19 +82,19 @@ export default function AlertsPage() {
         <div className="grid grid-cols-3 gap-2">
           <SeverityTile
             tone="alert" icon={<AlertTriangle className="w-4 h-4" />}
-            label="Críticas" count={counts.critical}
+            label={t.alerts.criticasShort} count={counts.critical}
             active={filter === "critical" || filter === "all"}
             onClick={() => setFilter(filter === "critical" ? "all" : "critical")}
           />
           <SeverityTile
             tone="warn" icon={<Bell className="w-4 h-4" />}
-            label="Avisos" count={counts.warning}
+            label={t.alerts.avisos} count={counts.warning}
             active={filter === "warning" || filter === "all"}
             onClick={() => setFilter(filter === "warning" ? "all" : "warning")}
           />
           <SeverityTile
             tone="info" icon={<Info className="w-4 h-4" />}
-            label="Info" count={counts.info}
+            label={t.alerts.info} count={counts.info}
             active={filter === "info" || filter === "all"}
             onClick={() => setFilter(filter === "info" ? "all" : "info")}
           />
@@ -107,7 +108,7 @@ export default function AlertsPage() {
             onClick={() => setFilter("all")}
             className="pressable px-3 py-1 text-[12px] font-medium rounded-full bg-primary/15 text-primary"
           >
-            Ver todas
+            {t.alerts.viewAll}
           </button>
         </div>
       )}
@@ -116,7 +117,7 @@ export default function AlertsPage() {
       {groups.map(({ severity, items }) => (
         <IOSSection
           key={severity}
-          eyebrow={severity === "critical" ? "Críticas" : severity === "warning" ? "Avisos" : "Info"}
+          eyebrow={severity === "critical" ? t.alerts.criticasShort : severity === "warning" ? t.alerts.avisos : t.alerts.info}
         >
           {items.map(a => (
             <div key={a.id} className="flex items-stretch gap-1">

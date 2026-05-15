@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   ChevronRight,
   Ticket,
@@ -38,6 +38,7 @@ import { useT } from "@/i18n/provider";
  */
 export default function WelcomePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const t = useT();
   const { data: trips, loading } = useAllTrips();
   const { user, loading: authLoading } = useSupabase();
@@ -48,18 +49,29 @@ export default function WelcomePage() {
   // Si el user ya tiene un viaje, no debería ver welcome — redirige a /today.
   // Excepción: si está pendiente la confirmación del demo, NO redirigimos
   // (sino el modal se cierra antes de que el user pueda decidir).
+  // Guard: solo disparar cuando estamos efectivamente en /welcome — durante
+  // la transición de router.replace() React puede re-correr este efecto en
+  // un momento donde pathname ya cambió pero el componente todavía no se
+  // desmontó, generando un segundo replace() innecesario (flicker visible).
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (pathname !== "/welcome") return;
     if (hasTrips && !confirmOpen) router.replace("/today");
-  }, [hasTrips, router, confirmOpen]);
+  }, [hasTrips, router, confirmOpen, pathname]);
 
   // Si el user está autenticado pero todavía no tiene ningún viaje, lo
   // mandamos directo al wizard de creación. Welcome page tiene sentido para
   // anon (signup CTA), no para auth-without-trip — ese caso necesita acción.
+  // Mismo guard que arriba: si pathname ya cambió, NO disparamos el replace —
+  // estamos en transición y dispararlo crea un flicker al volver a /welcome
+  // por un frame antes de irse a /trips?wizard=1.
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (pathname !== "/welcome") return;
     if (!authLoading && !loading && user && !hasTrips && !confirmOpen) {
       router.replace("/trips?wizard=1");
     }
-  }, [authLoading, loading, user, hasTrips, confirmOpen, router]);
+  }, [authLoading, loading, user, hasTrips, confirmOpen, router, pathname]);
 
   useEffect(() => {
     track(EVENTS.ONBOARDING_START);

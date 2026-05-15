@@ -51,8 +51,17 @@ export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase not configured, allow access (demo mode)
+  // If Supabase not configured:
+  //  - prod: redirigir a /welcome con flag `?config=missing` para que el chrome
+  //    de la app no rompa silenciosamente (rutas protegidas redireccionan a un
+  //    landing controlado). Guard `pathname !== "/welcome"` evita loop.
+  //  - dev/test: permitir acceso (demo mode local sin envs).
   if (!url || !key) {
+    if (process.env.NODE_ENV === "production" && pathname !== "/welcome") {
+      const welcomeUrl = new URL("/welcome", request.url);
+      welcomeUrl.searchParams.set("config", "missing");
+      return NextResponse.redirect(welcomeUrl);
+    }
     return NextResponse.next();
   }
 

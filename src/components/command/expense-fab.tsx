@@ -55,7 +55,7 @@ export function ExpenseFab() {
       city_name: null,
       category: defaults.category,
       subcategory: null,
-      description: description || `Gasto rápido ${defaults.category}`,
+      description: description || `${t.commandQuickExpense.defaultDescription} ${defaults.category}`,
       payment_method: defaults.payment_method,
       original_currency: defaults.currency,
       original_amount: amt,
@@ -83,7 +83,7 @@ export function ExpenseFab() {
           <Card className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Zap className="w-4 h-4 text-primary" />Gasto rápido</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"><Zap className="w-4 h-4 text-primary" />{t.commandQuickExpense.title}</h3>
                 <button onClick={() => setOpen(false)} className="text-muted-foreground"><X className="w-4 h-4" /></button>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -99,7 +99,7 @@ export function ExpenseFab() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] uppercase text-muted-foreground">{t.expenses.description} <span className="text-muted-foreground/60">(opcional)</span></label>
+                <label className="text-[10px] uppercase text-muted-foreground">{t.expenses.description} <span className="text-muted-foreground/60">{t.commandQuickExpense.optional}</span></label>
                 <Input placeholder={t.expenses.whatDidYouPay} value={description} onChange={e => setDescription(e.target.value)} className="mt-1" />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -116,7 +116,7 @@ export function ExpenseFab() {
                   </SelectNative>
                 </div>
               </div>
-              <p className="text-[10px] text-muted-foreground">Fecha = hoy · TC = 1.00 (editá en /expenses si necesitás precisión)</p>
+              <p className="text-[10px] text-muted-foreground">{t.commandQuickExpense.hint}</p>
               <Button onClick={submit} className="w-full" disabled={!amount || busy}>
                 {busy ? "..." : `${t.common.save} (${defaults.currency})`}
               </Button>
@@ -131,8 +131,8 @@ export function ExpenseFab() {
          del stack completo. */}
       <button
         onClick={() => { haptic("light"); setOpen(true); }}
-        aria-label="Agregar gasto"
-        title="Agregar gasto rápido"
+        aria-label={t.common.fabs.addExpense}
+        title={t.commandQuickExpense.ctaShort}
         className="fixed z-40 right-4 w-14 h-14 rounded-2xl text-white shadow-[0_8px_24px_rgba(0,0,0,0.25),0_0_0_1px_rgba(255,255,255,0.10)_inset] bg-[linear-gradient(135deg,_oklch(0.68_0.16_38),_oklch(0.55_0.18_55))] hover:scale-105 hover:shadow-[0_12px_32px_rgba(0,0,0,0.30)] active:scale-95 transition-all flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
         style={{ bottom: "calc(var(--fab-stack-3) + env(safe-area-inset-bottom))" }}
       >
