@@ -227,3 +227,94 @@ Commits Iter 2: `a0d80bc` (consolidado).
 
 ## Iteration 3 — 2026-05-15T13:24:29Z
 
+
+**Pipeline**: 5 audit agents → 50+ findings (cobertura proxy gaps + storage policies multi-user + i18n pages críticas + carry-overs) → sintesis top 14 P0/P1 → 5 fix agents paralelos → verify (tsc 0 + vitest 234/234, sin regression) → commit `04998ee` → deploy CLI OK → smoke 3/3.
+
+### Changes aplicados (47 fixes consolidados)
+
+**Dominio IA** (12 fixes):
+
+| # | File | Resolución |
+|---|---|---|
+| 1 | `src/lib/ai/proxy-identifier.ts` (NEW) | Helper `getProxyIdentifier(suffix, fallback)` con user.id lookup |
+| 2 | `assistant/route.ts:1-12` | Imports helper compartido (eliminó def local) |
+| 3-7 | 5 LLM routes | BYOK per-user identifier: categorize-expense, parse-booking, parse-email-confirmation, generate-itinerary, classify-document |
+| 8 | `email-in/route.ts:262-292` | callLLM→callLLMRich, allowTampuFallback:false, recordProxyCall, identifier per-user |
+| 9 | `airport-info/route.ts:57-115` | callLLM→callLLMRich, recordProxyCall, caps 200ch name/city/country + 16ch IATA |
+| 10 | `whatsapp/parser.ts:152-260` | callAnthropicHaiku/callGeminiFlash wrapped en withRetry + status throw on 429/5xx |
+| 11 | `whatsapp/parser.ts:247-275` | validateDataShape por type (flight/hotel/transport/reservation/note/unknown) |
+| 12 | `whatsapp/parser.ts:282-306` | normalizeParsed degrade confidence si shape validation fail |
+
+**Dominio Code** (6 fixes):
+
+| # | File | Resolución |
+|---|---|---|
+| 13 | `use-trip-data.ts:mActivateTrip` | Removed dead invalidations (commandCenter/dashboard), scope activeTrip by mode |
+| 14 | `use-trip-data.ts:invalidateTrip` | +["attachments", mode, tripId] invalidation |
+| 15 | `use-theme.ts:23-30` | getServerSnapshot retorna "light" (default real, evita hydration mismatch) |
+| 16 | `use-trip-realtime.ts:51-72,113-130` | Handlers opcionales agregados: attachments, tripMembers, polls |
+| 17 | `use-trip-realtime.ts:75-160` | Cleanup race fix con canceled flag + scoped channel ref |
+| 18 | `use-trip-data.ts:mAddAttachment` | TODO comment para futura cross-invalidation |
+
+**Dominio Diseño+i18n** (20 fixes):
+
+| # | File | Resolución |
+|---|---|---|
+| 19 | `es.ts + en.ts` | Keys nuevas: passcode.* (~30), health.* (~16), wallet.* (6) — paridad EN garantizada por type |
+| 20-32 | `/passcode/page.tsx` | 13 secciones de strings hardcoded movidas a t.passcode.* + StrengthBar refactor + formatRemaining usa time dict |
+| 33-37 | `/health/page.tsx` | LEVEL_LABEL/STATUS_LABEL inline + KPI labels + EmptyState + malaria + disclaimer → t.health.* |
+| 38-39 | `AddToWalletButton.tsx` | 6 strings hardcoded → t.wallet.*, useI18n imported |
+| 40 | `components/ios/index.tsx:293-302` | Sheet: useEffect Escape key listener + cleanup |
+
+**Dominio Funcionalidad** (8 fixes):
+
+| # | File | Resolución |
+|---|---|---|
+| 41 | `migrations/00035_storage_policies_multi_user.sql` (NEW) | SELECT via JOIN attachments+trip_members activos, INSERT/UPDATE/DELETE solo uploader |
+| 42 | `docs/SUPABASE-STORAGE-SETUP.md:30-65` | SQL nuevo + nota explicando bug 00034 incompleto |
+| 43 | `/trips/page.tsx:46-54,155-158` | WizardQueryReader sub-component lee ?wizard=1 + abre wizard |
+| 44 | `PrintBookSheet.tsx:60-71` | Branch 401 con toast info "Necesitás iniciar sesión" |
+| 45 | `/reservations/page.tsx:1-46` | Migrado a useAttachments hook (TanStack), eliminado fetch directo + localStorage legacy |
+
+**Dominio Innovación** (2 fixes):
+
+| # | File | Resolución |
+|---|---|---|
+| 46 | `src/components/dashboard/QuickStatsCard.tsx` (NEW) | 4-cell grid: Días/Vuelos/Docs/Presupuesto con tone-mapping urgency |
+| 47 | `/today/page.tsx:3-22,75-104,262-267` | useMemo derivation + render entre HeroParallax y NBA |
+
+### Verificación
+
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` 234/234 ✓ (sin regression)
+- `npm run build` 67 routes ✓
+- Vercel CLI deploy → production READY ✓
+- Smoke: /welcome 200 ✓, /login 200 ✓, /api/curated-destinations JSON ✓
+
+### USER ACTIONS post-Iter 3
+
+**P0 CRÍTICO**:
+- **Aplicar migration 00035** en Supabase SQL Editor (storage policies multi-user)
+- Sin esto: miembros del trip NO pueden leer attachments uploaded por otros → vault colaboración rota
+
+### Token cost estimado Iter 3
+
+- 5 audit agents: ~135k tokens
+- 5 fix agents: ~110k tokens
+- Total: ~245k tokens
+
+### Observaciones para Iter 4+
+
+1. AddToWalletButton iOS download fix (defer, fuera de territorio Iter 3)
+2. Storage keys legacy `travel-os-*` sweep masivo (vault, ai-key, journal, weather caches)
+3. Page-level i18n carry-over: /today, /settings (hardcoded greetings, profile parts)
+4. EmptyStates restantes en /tasks, /reservations, /alerts (action CTAs)
+5. Font-size scale sweep en top-5 archivos (settings, itinerary, command, welcome, vault)
+6. SSE streaming real /api/assistant y /api/generate-itinerary
+7. WhatsApp outbound pre-flight cron (requires prod Twilio ENVs)
+8. Tampu Recap MVP @vercel/og
+9. Comments threaded item-level extender más allá de itinerary
+
+Commit Iter 3: `04998ee` (consolidado).
+
+---
