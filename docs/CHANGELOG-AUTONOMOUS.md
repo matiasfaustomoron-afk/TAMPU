@@ -130,3 +130,97 @@ Commits: `800263b` (18 fixes) + `01f3678` (force-dynamic intermedio) + `88acad4`
 
 ## Iteration 2 — 2026-05-15T13:02:29Z
 
+
+**Pipeline**: 5 audit agents → 62 findings → sintesis top 16 P0/P1 → 5 fix agents paralelos → verify (tsc 0 + vitest 234/234, +13 tests PII filter) → commit `a0d80bc` → deploy CLI OK → smoke 3/3.
+
+### Changes aplicados (30+ fixes)
+
+**Dominio IA** (7):
+
+| # | File | Before → After |
+|---|---|---|
+| 1 | `pii-filter.ts:24-26` | Regex CC over-masking IDs largos → split en 2 patrones (separator + label-required) |
+| 2 | `pii-filter.ts:30` | DNI: agregado pattern con puntos (`DNI 35.123.456`) |
+| 3 | `pii-filter.ts:33` | CUIT: prefijo restringido a 20/23/24/27/30/33/34 |
+| 4 | `__tests__/pii-filter.test.ts` (NEW) | 13 tests cubriendo CC, DNI, CUIT, PNR, passport |
+| 5 | `agentic.ts:476-493` | Prompt injection: tool_results wrapped en `<tool_output>` + escape backticks |
+| 6 | `agentic.ts:402-419` | Loop guards: LOOP_BUDGET_TOKENS=50k + LOOP_TIMEOUT_MS=60s |
+| 7 | `providers.ts:186-200, 246-260` | 429/5xx throw status (no más null silente) — withRetry actúa |
+| 8 | `assistant/route.ts:6-24` | `getProxyIdentifier` per-user: `byok:user:UID:assistant` |
+
+**Dominio Code** (8):
+
+| # | File | Before → After |
+|---|---|---|
+| 9 | `src/lib/data/attachments.ts` (NEW) | fetchAttachments + insertAttachment + updateAttachment + deleteAttachment |
+| 10 | `use-trip-data.ts` | useAttachments hook + mAddAttachment + mDeleteAttachment con invalidation |
+| 11 | `boarding-passes.tsx` | Migrado a useAttachments (-22 LoC) |
+| 12 | `vault/page.tsx` | Migrado a useAttachments + mutations |
+| 13 | `use-trip-data.ts:mActivateTrip` | + invalidación activeTrip/commandCenter/dashboard |
+| 14 | `migrations/00033_realtime_publication_extras.sql` (NEW) | 6 tablas agregadas a realtime |
+| 15 | `migrations/00034_attachments_rls_multi_user.sql` (NEW) | RLS basada en trip_members (P0 vault editor) |
+| 16 | `components/shared/EmptyState.tsx` (DELETED) | Dead code, callers usan index.tsx |
+| 17 | `globals.css:80-91, 1014-1025` | FAB tokens --fab-stack-1/2/3 + media query 740px |
+| 18 | `{assistant,more,expense}-fab.tsx` | inline 88/152/216px → var(--fab-stack-N) |
+
+**Dominio Diseño+i18n** (21):
+
+| # | File | Before → After |
+|---|---|---|
+| 19 | `dictionaries/es.ts + en.ts` | + `common.noActiveTrip`, `common.close`, `trips.edit.*` (17 keys), `visas.*` (16 keys) |
+| 20 | `/trips/[id]/edit/page.tsx` | 17 strings hardcoded → `t.trips.edit.*` |
+| 21 | `/trips/[id]/edit/page.tsx:12` | `export const dynamic = "force-dynamic"` eliminado (no-op client) |
+| 22 | `/visas/page.tsx` | Refactor i18n completo |
+| 23 | `/polls + /expenses + /vault + /health + /map + /visas` | EmptyStates con `action={<Link><Button>...}` CTA |
+| 24 | `activity-feed.tsx:40` | "Sin viaje activo" → `t.common.noActiveTrip` |
+| 25 | `destination-guide.tsx + toast.tsx` | aria-label "Cerrar" → `t.common.close` |
+
+**Dominio Funcionalidad** (7):
+
+| # | File | Before → After |
+|---|---|---|
+| 26 | `create-poll.tsx + poll-card.tsx` | P0 carry-over: writes online via createPollOnline/castVoteOnline/deletePollOnline |
+| 27 | `/members/page.tsx:160-188` | acceptInvite → setActiveTrip + router.push("/today") |
+| 28 | `/api/trip-invite/route.ts:48-58` | Self-invite check (400) |
+| 29 | `/share/page.tsx + /itinerary/page.tsx` | TTL 30 días via campo `exp` en payload |
+| 30 | `/trips/[id]/edit/page.tsx:handleSave` | Preserva contingency_pct ratio en lugar de hardcoded 0.10 |
+
+**Dominio Innovación** (1 quick-win):
+
+| # | File | Before → After |
+|---|---|---|
+| 31 | `src/components/journal/PrintBookSheet.tsx` (NEW) | Sheet con title + binding selector (softcover/hardcover/lay-flat) + POST /api/print-book |
+| 32 | `/journal/page.tsx` | Botón "Pedir libro" en SectionHeader + integración |
+
+### Verificación
+
+- `npx tsc --noEmit` exit 0 ✓
+- `npx vitest run` 234/234 (+13 nuevos PII tests) ✓
+- `npm run build` 67 routes generated ✓
+- Vercel CLI deploy → production READY ✓
+- Smoke: /welcome 200 ✓, /login 200 ✓, /api/curated-destinations JSON ✓
+
+### USER ACTIONS post-Iter 2
+
+1. **Aplicar migration 00033** en Supabase SQL Editor (realtime extras)
+2. **Aplicar migration 00034** en Supabase SQL Editor (vault RLS multi-user) — sin esto el bug de vault editor invitado persiste
+3. Revocar Vercel/GitHub/Resend/Supabase DB pass (carry-over Iter 1)
+
+### Token cost estimado
+
+- 5 audit agents: ~115k tokens
+- 5 fix agents: ~135k tokens
+- Total Iter 2: ~250k tokens
+
+### Observaciones para Iter 3+
+
+1. Reservations attachments TODO Iter 3 (TanStack migration parcial)
+2. Storage keys legacy `travel-os-*` (~30 keys, parcialmente migrado)
+3. Tipos generados Supabase (`supabase gen types`) bloqueado por interactive auth
+4. SSE streaming real para assistant/itinerary (4-6h)
+5. Carbon footprint Climatiq, comments threaded item-level, fare tracker
+6. WhatsApp outbound pre-flight cron
+
+Commits Iter 2: `a0d80bc` (consolidado).
+
+---
