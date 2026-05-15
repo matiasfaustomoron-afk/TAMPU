@@ -218,7 +218,7 @@ export default function AssistantPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-white/70 mb-2">
-                Claude · Sonnet 4
+                {keyConfigured ? "Asistente IA" : "Asistente · Modo limitado"}
               </p>
               <h2 className="font-serif text-3xl leading-tight">
                 {keyConfigured ? "Preguntá lo que sea" : "Conectá Claude"}

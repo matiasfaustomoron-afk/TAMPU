@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Share2 } from "lucide-react";
+import { Copy, Share2, Mail, MessageCircle } from "lucide-react";
 import QRCode from "react-qr-code";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ios/toast";
@@ -106,6 +106,30 @@ export function AddressDisplay({ address, shortId, label = "Dirección del viaje
           <Share2 className="w-4 h-4 mr-2" aria-hidden="true" />
           Compartir
         </Button>
+      </div>
+
+      {/* Atajos para "save it forever" — el user pega la address en su propio
+          inbox / WhatsApp para tenerla siempre a mano. Resuelve el problema
+          reportado por testers: "el mail es imposible de retener, muy largo". */}
+      <div className="flex gap-2">
+        <a
+          href={`mailto:?subject=${encodeURIComponent("Mi dirección Tampu del viaje")}&body=${encodeURIComponent(`Para reenviar confirmaciones a este viaje, usá esta dirección:\n\n${address}\n\nO escaneá el QR de la app.\n\n— Tampu`)}`}
+          className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-medium px-3"
+          aria-label="Mandarme la dirección por email"
+        >
+          <Mail className="w-4 h-4" aria-hidden="true" />
+          Mandármela por email
+        </a>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(`Mi dirección Tampu del viaje: ${address}`)}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-medium px-3"
+          aria-label="Mandarme la dirección por WhatsApp"
+        >
+          <MessageCircle className="w-4 h-4" aria-hidden="true" />
+          Por WhatsApp
+        </a>
       </div>
     </div>
   );

@@ -998,12 +998,13 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .text-balance { text-wrap: balance; }
 .text-pretty  { text-wrap: pretty; }
 
-/* ─── FAB stacking — hide MoreFab en viewports muy chicos.
-   iPhone SE 1st gen / iPhone 13 mini landscape (568pt × ~320pt visible).
-   3 FABs apilados + tab bar comen >40% del alto. Estética rota.
-   En esos viewports el user accede a "Más" vía link directo a /more
-   desde menus contextuales en cada tab — NO se pierde funcionalidad. */
-@media (max-height: 700px) {
+/* ─── FAB stacking — hide DESHABILITADO ───
+ * Antes escondíamos MoreFab a max-height: 700px. PROBLEMA reportado por tester:
+ * sin el "..." flotante el user pierde el ÚNICO acceso a /more (settings, profile,
+ * canales de ingesta). El "se accede via tab" era falso — no hay tab "Más".
+ * Mantenemos el FAB visible siempre. Si en SE molesta, mejor compactar el stack
+ * que ocultar accesos críticos. */
+@media (max-height: 0px) {
   .more-fab { display: none !important; }
 }
 
