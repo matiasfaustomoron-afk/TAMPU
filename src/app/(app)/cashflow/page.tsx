@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { LargeTitle, IOSSection, IOSRow, IOSFeatureCard, StatChip } from "@/components/ios";
 import { EmptyState } from "@/components/shared";
@@ -8,8 +9,19 @@ import { Button } from "@/components/ui/button";
 import { useCommandCenter } from "@/lib/hooks/use-trip-data";
 import { useI18n } from "@/i18n/provider";
 import { Calendar, Clock, MapPin, TrendingUp } from "lucide-react";
-import { BarChart, Bar, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart } from "recharts";
 import { cn } from "@/lib/utils/helpers";
+
+// Recharts pesa ~150KB minified. Lo cargamos solo cuando esta página rinde,
+// no como parte del chunk inicial. Skeleton mantiene el layout (200px / 220px
+// de altura) para evitar CLS.
+const DailyBurnBarChart = dynamic(
+  () => import("@/components/charts/cashflow-charts").then(m => m.DailyBurnBarChart),
+  { ssr: false, loading: () => <div className="w-full h-full skeleton rounded-md" /> },
+);
+const CumulativeVsBudgetChart = dynamic(
+  () => import("@/components/charts/cashflow-charts").then(m => m.CumulativeVsBudgetChart),
+  { ssr: false, loading: () => <div className="w-full h-full skeleton rounded-md" /> },
+);
 
 export default function CashflowPage() {
   const { data: cc, loading } = useCommandCenter();
@@ -86,23 +98,7 @@ export default function CashflowPage() {
           <p className="ios-eyebrow">{t.cashflow.dailySpend}</p>
           <div className="ios-card p-5">
             <div style={{ width: "100%", height: 200 }}>
-              <ResponsiveContainer>
-                <BarChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
-                  <YAxis hide />
-                  <Tooltip
-                    formatter={(v) => formatCurrency(typeof v === "number" ? v : 0)}
-                    contentStyle={{
-                      fontSize: 11,
-                      background: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                    }}
-                    cursor={{ fill: "var(--color-accent)", opacity: 0.4 }}
-                  />
-                  <Bar dataKey="out" fill="oklch(0.72 0.18 230)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <DailyBurnBarChart data={chartData} formatCurrency={formatCurrency} />
             </div>
           </div>
         </section>
@@ -114,23 +110,7 @@ export default function CashflowPage() {
           <p className="ios-eyebrow">{t.cashflow.cumulativeVsBudget}</p>
           <div className="ios-card p-5">
             <div style={{ width: "100%", height: 220 }}>
-              <ResponsiveContainer>
-                <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }} interval="preserveStartEnd" axisLine={false} tickLine={false} />
-                  <YAxis hide />
-                  <Tooltip
-                    formatter={(v) => formatCurrency(typeof v === "number" ? v : 0)}
-                    contentStyle={{
-                      fontSize: 11,
-                      background: "var(--color-card)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 12,
-                    }}
-                  />
-                  <Line type="monotone" dataKey="budget_line" stroke="oklch(0.7 0.02 260)" strokeDasharray="4 4" dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="cumulative" stroke="oklch(0.72 0.18 230)" strokeWidth={2.5} dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <CumulativeVsBudgetChart data={chartData} formatCurrency={formatCurrency} />
             </div>
             <div className="mt-3 flex gap-4 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">

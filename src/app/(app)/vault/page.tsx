@@ -152,11 +152,21 @@ export default function VaultPage() {
     try {
       const isClassifiable = f.type.startsWith("image/") || f.type === "application/pdf";
       if (!isClassifiable) { setClassifying(false); return; }
-      const buf = await f.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let bin = "";
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      const data_base64 = btoa(bin);
+      // FileReader.readAsDataURL hace el base64 en el thread de I/O del browser
+      // — no bloquea el main thread como el loop `String.fromCharCode + btoa`
+      // que estaba antes (que era O(n) JS sync y se notaba mucho en imágenes
+      // >2MB capturadas desde la cámara nativa).
+      const data_base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          // dataURL es "data:<mime>;base64,<payload>" — sólo nos queda con payload.
+          const comma = result.indexOf(",");
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+        reader.readAsDataURL(f);
+      });
       const base = process.env.NEXT_PUBLIC_API_BASE_URL || "";
       const res = await fetch(`${base}/api/classify-document`, {
         method: "POST",
@@ -699,7 +709,7 @@ function VaultRow({ att, onOpen, onDownload, onToggleFavorite, onDelete, formatD
         <div className="shrink-0 w-12 h-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
           {thumb ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={thumb} alt={att.file_name || "documento"} className="w-full h-full object-cover" />
+            <img src={thumb} alt={att.file_name || "documento"} className="w-full h-full object-cover" loading="lazy" decoding="async" />
           ) : isImage ? (
             <ImageIcon className="w-5 h-5 text-muted-foreground" />
           ) : att.file_type.includes("pdf") ? (

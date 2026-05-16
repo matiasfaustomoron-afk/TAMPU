@@ -28,14 +28,16 @@ const nextConfig: NextConfig = {
   //   - date-fns: cada función es un módulo, barrel los junta.
   experimental: {
     optimizePackageImports: [
-      "lucide-react",
-      "@radix-ui/react-icons",
-      "@radix-ui/react-dialog",
-      "@radix-ui/react-popover",
-      "@radix-ui/react-toast",
-      "recharts",
-      "@sentry/nextjs",
-      "date-fns",
+      // Lista basada en imports reales del codebase (audit mayo 2026).
+      // Cualquier package acá listado se reescribe a paths granulares —
+      // sin esto, el barrel arrastra todo el index.
+      "lucide-react",          // ~30 íconos usados de ~1000.
+      "@radix-ui/react-tabs",  // src/components/ui/tabs.tsx
+      "@radix-ui/react-progress", // src/components/ui/progress.tsx
+      "@radix-ui/react-slot",  // src/components/ui/button.tsx
+      "recharts",              // donut + composed charts (lazy via dynamic).
+      "@sentry/nextjs",        // browser + integrations.
+      "date-fns",              // cada función es un módulo.
     ],
     // scrollRestoration true: Next.js gestiona scroll position en
     // back/forward navigation. Sin esto, navegar /vault → /expenses → back
