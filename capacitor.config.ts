@@ -42,7 +42,15 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     StatusBar: {
-      style: "LIGHT", // texto oscuro sobre fondo claro (modo light default de Tampu)
+      // Style.Dark = contenido OSCURO (íconos negros) sobre fondo CLARO.
+      // El default del app es light (#f5efe0 lana de llama), así que arrancamos
+      // con íconos oscuros para contraste correcto. Si el user tiene dark mode
+      // persistido, `configureNativeChrome()` (en src/lib/native/platform.ts)
+      // re-aplica Style.Light + #2a2118 una vez React hidrata.
+      //
+      // Bug histórico: pre-rebrand acá decía "LIGHT" (íconos claros) sobre cream
+      // = invisible. Fix mayo 2026.
+      style: "DARK",
       backgroundColor: "#f5efe0",
       overlaysWebView: false,
     },

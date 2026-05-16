@@ -197,22 +197,36 @@ export default function JournalPage() {
     queueMicrotask(() => setEntries(next));
   }, [trip]);
 
-  // Load thumbnails from IndexedDB
+  // Load thumbnails from IndexedDB.
+  //
+  // Perf (mayo 2026): antes esto recorría `entries` con `await` serial — un
+  // journal de 100 fotos pegaba 100 round-trips de IDB en serie y la página
+  // tardaba 3-5s en mostrar miniaturas. Ahora pedimos en paralelo (Promise.all)
+  // sólo las que faltan, y dependemos del set de IDs (no del objeto entries
+  // completo) para no relanzar el efecto cuando cambia un like/comment.
+  const entryIdsKey = useMemo(() => entries.map((e) => e.id).join(","), [entries]);
+
   useEffect(() => {
     let alive = true;
+    const missing = entries.filter((e) => !thumbs[e.id]);
+    if (missing.length === 0) return;
     (async () => {
-      const out: Record<string, string> = { ...thumbs };
-      for (const e of entries) {
-        if (out[e.id]) continue;
-        const url = await getVaultDataUrl(e.id).catch(() => null);
-        if (url) out[e.id] = url;
-        if (!alive) return;
-      }
-      if (alive) setThumbs(out);
+      const loaded = await Promise.all(
+        missing.map((e) => getVaultDataUrl(e.id).then((u) => [e.id, u] as const).catch(() => [e.id, null] as const)),
+      );
+      if (!alive) return;
+      setThumbs((prev) => {
+        const next = { ...prev };
+        let added = 0;
+        for (const [id, url] of loaded) {
+          if (url && !next[id]) { next[id] = url; added++; }
+        }
+        return added > 0 ? next : prev;
+      });
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries]);
+  }, [entryIdsKey]);
 
   const filtered = useMemo(() => {
     return filter === "all" ? entries : entries.filter((e) => e.category === filter);
@@ -912,7 +926,7 @@ function FeedCard({
       >
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt={entry.caption || "Foto del diario"} className="w-full aspect-[4/5] object-cover" />
+          <img src={thumb} alt={entry.caption || "Foto del diario"} className="w-full aspect-[4/5] object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="w-full aspect-[4/5] flex items-center justify-center text-muted-foreground">
             <Camera className="w-10 h-10" />

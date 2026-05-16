@@ -318,15 +318,43 @@ export async function maybeRequestReview(reason: string): Promise<boolean> {
 }
 
 // ─── Status bar + splash ───
+//
+// Theme-aware: lee `.dark` del <html> (lo setea el boot script de RootLayout
+// ANTES de hidratar, vía localStorage). Si está dark, status bar con íconos
+// claros sobre #2a2118 (cuero cálido). Si está light, íconos oscuros sobre
+// #f5efe0 (lana de llama).
+//
+// Convención de @capacitor/status-bar:
+//   Style.Light = contenido CLARO (texto blanco) → fondos OSCUROS
+//   Style.Dark  = contenido OSCURO (texto negro) → fondos CLAROS
+//
+// Bug fixed (mayo 2026): pre-rebrand acá se hardcodeaba #0a0a0f + Style.Dark,
+// lo cual era el dark legacy. Con el theme light default (cream), se veía
+// con íconos claros sobre fondo claro = ilegible. Ahora respeta el tema.
+//
+// Además: hide() del splash se dispara ANTES de cualquier work pesado para
+// no demorar el primer paint (el splash queda visible hasta este punto).
 export async function configureNativeChrome(): Promise<void> {
   if (!(await isNative())) return;
+
+  // Esconder splash lo antes posible — el web ya está listo si llegamos acá.
+  // Fire-and-forget: no necesitamos bloquear el resto de la config.
+  void (async () => {
+    try {
+      const { SplashScreen } = await import("@capacitor/splash-screen");
+      await SplashScreen.hide();
+    } catch { /* ignore */ }
+  })();
+
   try {
+    const isDark =
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark");
+
     const { StatusBar, Style } = await import("@capacitor/status-bar");
-    await StatusBar.setStyle({ style: Style.Dark });
-    await StatusBar.setBackgroundColor({ color: "#0a0a0f" });
-  } catch { /* ignore */ }
-  try {
-    const { SplashScreen } = await import("@capacitor/splash-screen");
-    await SplashScreen.hide();
+    await Promise.all([
+      StatusBar.setStyle({ style: isDark ? Style.Light : Style.Dark }),
+      StatusBar.setBackgroundColor({ color: isDark ? "#2a2118" : "#f5efe0" }),
+    ]);
   } catch { /* ignore */ }
 }

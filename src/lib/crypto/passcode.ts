@@ -40,9 +40,19 @@
 
 import { getPref, setPref } from "@/lib/native/platform";
 import { bytesToBase64, base64ToBytes, encryptString, decryptString, DecryptError, encryptBlob, decryptBytes } from "./encryption";
-import { zxcvbnAsync, zxcvbnOptions } from "@zxcvbn-ts/core";
-import * as zxcvbnCommonPackage from "@zxcvbn-ts/language-common";
-import * as zxcvbnEsEsPackage from "@zxcvbn-ts/language-es-es";
+
+// zxcvbn — lazy-loaded dynamic import dentro de `ensureZxcvbn()`.
+// Razón: el bundle de @zxcvbn-ts/core + language-common + language-es-es pesa
+// ~300-450 KB minified. Solo se usa al SETEAR/CAMBIAR passcode (validar fuerza)
+// — no en el flujo normal de unlock. Antes este módulo lo importaba estático
+// y arrastraba ese costo a todos los chunks que tocan passcode (vault, settings,
+// AI key, etc.). Ahora solo se baja cuando `validatePasscodeStrength()` corre.
+type ZxcvbnAsync = (s: string) => Promise<{
+  score: 0 | 1 | 2 | 3 | 4;
+  crackTimesDisplay?: { offlineSlowHashing1e4PerSecond?: string | number };
+  feedback?: { warning?: string; suggestions?: string[] };
+}>;
+let zxcvbnAsync: ZxcvbnAsync | null = null;
 
 // ─── Constantes de configuración (no exportadas: son hard-coded del diseño) ─────
 const PBKDF2_ITERATIONS = 600_000;     // OWASP 2026 mínimo recomendado para SHA-256
@@ -66,20 +76,24 @@ let lockTimer: ReturnType<typeof setTimeout> | null = null;
 let lastUseAt = 0;
 const lockListeners = new Set<() => void>();
 
-// ─── zxcvbn setup — lazy, módulo-scope. Sólo se inicializa una vez. ────────
+// ─── zxcvbn setup — lazy via dynamic import. Solo se inicializa una vez. ───
 let zxcvbnReady = false;
-function ensureZxcvbn(): void {
+async function ensureZxcvbn(): Promise<void> {
   if (zxcvbnReady) return;
-  zxcvbnOptions.setOptions({
-    translations: zxcvbnEsEsPackage.translations,
+  const [core, common, es] = await Promise.all([
+    import("@zxcvbn-ts/core"),
+    import("@zxcvbn-ts/language-common"),
+    import("@zxcvbn-ts/language-es-es"),
+  ]);
+  core.zxcvbnOptions.setOptions({
+    translations: es.translations,
     dictionary: {
-      ...zxcvbnCommonPackage.dictionary,
-      ...zxcvbnEsEsPackage.dictionary,
+      ...common.dictionary,
+      ...es.dictionary,
     },
-    graphs: zxcvbnCommonPackage.adjacencyGraphs,
-    // Custom user dictionary — palabras Tampu-específicas que NO debería usar.
-    // Suma "tampu" y palabras de viaje a la lista global del usuario.
+    graphs: common.adjacencyGraphs,
   });
+  zxcvbnAsync = core.zxcvbnAsync as ZxcvbnAsync;
   zxcvbnReady = true;
 }
 
@@ -197,17 +211,17 @@ function meetsStructuralFloor(s: string): { ok: true } | { ok: false; reason: st
  * resultados completos. La función es async, el caller debe esperarla.
  */
 export async function validatePasscodeStrength(s: string): Promise<PasscodeStrength> {
-  ensureZxcvbn();
-
-  // 1. Floor estructural (rápido, sin zxcvbn).
+  // 1. Floor estructural (rápido, sin zxcvbn — y sin pagar el dynamic import).
   const floor = meetsStructuralFloor(s);
   if (!floor.ok) {
     return { ok: false, reason: floor.reason, suggestion: floor.suggestion, score: 0 };
   }
 
   // 2. zxcvbn — detecta nombres, fechas, secuencias, leaks comunes.
+  await ensureZxcvbn();
   let result;
   try {
+    if (!zxcvbnAsync) throw new Error("zxcvbn not initialized");
     result = await zxcvbnAsync(s);
   } catch {
     // Si zxcvbn falla por cualquier motivo, no bloqueamos al user pero loggeamos.
